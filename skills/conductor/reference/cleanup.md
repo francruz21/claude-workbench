@@ -64,8 +64,10 @@ git -C <worktreePath> submodule foreach --quiet \
 
 Casos borde:
 
-- **`@{u}` falla con "no upstream configured"** → la rama nunca se pusheó. Eso
-  es **trabajo sin publicar**, no un error del chequeo: no borrar.
+- **`@{u}` falla con "no upstream configured"** → estado normal de un ticket
+  que todavía no publicó su rama — el hijo nunca pushea, así que esto es lo
+  esperado hasta que el humano publique, no la señal de que algo salió mal ni
+  un error del chequeo. Sigue siendo **trabajo sin publicar**: no borrar.
 - **La rama remota se borró después del merge** (squash + delete branch) →
   `@{u}` también falla. Distinguirlo del caso anterior mirando si el PR está
   mergeado: si lo está y el remoto ya no tiene la rama, no hay nada sin

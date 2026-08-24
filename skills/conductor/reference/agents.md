@@ -212,7 +212,7 @@ propósito.
 
 ### El `--spec` del task
 
-Tiene que decirle al agente cuatro cosas, explícitas:
+Tiene que decirle al agente ocho cosas, explícitas:
 
 1. **El ticket** — ID, link, y lo que se leyó de él (título, labels de ambiente
    y de tipo, casos de prueba si los describe).
@@ -237,6 +237,11 @@ Tiene que decirle al agente cuatro cosas, explícitas:
    por frecuencia en los PRs recientes, que no es lo mismo que el default.
    Pasarle el handle directo y aclarar que va como **reviewer** de la PR, no como
    assignee, y que el assignee del ticket en el tracker no se toca.
+8. **Que nunca pushea.** Ni contra la rama de trabajo ni contra ninguna otra:
+   deja la rama lista para publicar (sin upstream, a propósito) y espera a
+   que el humano la publique. Recién cuando detecta upstream — ver el paso 13
+   de `ticket-workflow` — sigue con la PR. Sin esta línea el agente asume que
+   publicar es parte de terminar la tarea, y pushea igual.
 
 ## El rastro en el tracker
 
@@ -265,10 +270,11 @@ va **de una imagen a la vez**: `prepare_attachment_upload` → `PUT` del archivo
 `create_attachment_from_upload`, y después se embebe con sintaxis de imagen de
 markdown en el cuerpo del comentario.
 
-**No se espera al push para comentar.** El paso 12 de `ticket-workflow` dice
-"inmediatamente después de un push confirmado", y en este flujo el push lo corre
-el usuario a mano: atarle la evidencia a eso la deja secuestrada por tiempo
-indefinido. Lo que ya se probó vale hoy.
+**No se espera al push para comentar.** El paso 12 de `ticket-workflow` dispara
+al dejar la rama lista para publicar (paso 11), no al pushear — el hijo nunca
+pushea, y quien publica la rama es el humano, a mano, y puede tardar días:
+atarle la evidencia a eso la dejaría secuestrada por tiempo indefinido. Lo que
+ya se probó vale hoy.
 
 Y si el conductor ya dejó un comentario en el ticket (por ejemplo, una pregunta
 de negocio), el del agente es **otro** comentario, el de la evidencia técnica.
@@ -292,6 +298,11 @@ Ventanas rodantes de 15 minutos. Reglas:
   devuelve **un** mensaje por vez.
 - Un agente se considera muerto solo si su terminal desapareció de
   `orca-ide terminal list --json`, o si el usuario lo pide.
+- **Un hijo que reportó "listo para publicar" y quedó esperando al humano está
+  en un estado esperado, no estancado ni muerto.** No hay un push propio que
+  vaya a destrabarlo solo, así que ese silencio puede durar horas o días sin
+  ser señal de nada roto — el criterio de arriba (terminal vivo en
+  `terminal list`) sigue siendo el único que importa.
 
 Si una ventana vuelve vacía y hay dudas de si el agente avanza, mirar sin
 interrumpir:
@@ -355,8 +366,8 @@ agente, sin intentar resolverlo por él.
 
 - No responde un gate en nombre del usuario (salvo los dos derivables en modo
   `judgment-only`).
-- No pushea, no mergea, no aprueba PRs. Los hijos pushean, con la confirmación
-  que ya pide `ticket-workflow`.
+- No pushea, no mergea, no aprueba PRs. Tampoco los hijos: dejan la rama lista
+  para publicar y esperan a que el humano la publique — recién ahí abren la PR.
 - No mata un agente por silencio.
 - No manda mensajes de ciclo de vida a grupos (`@all`, `@claude`): `worker_done`
   y `heartbeat` van al handle concreto, o generan mail falso en terminales que

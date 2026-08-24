@@ -41,8 +41,10 @@ No son limitaciones pendientes: son restricciones de diseño. Si algo de esto
 parece necesario, la respuesta es preguntarle al usuario, no hacerlo.
 
 - **No pushea, no mergea, no aprueba PRs.** Nada de `git push`, `git merge`,
-  `gh pr merge`, `gh pr review --approve`. Los hijos pushean, con la
-  confirmación que ya pide `ticket-workflow`.
+  `gh pr merge`, `gh pr review --approve`. Tampoco los hijos: dejan la rama
+  lista para publicar (sin upstream, a propósito) y esperan a que el humano
+  la publique. Recién con upstream ya creado el hijo abre la PR — ver los
+  pasos 11 y 13 de `ticket-workflow`.
 - **No responde gates en nombre del usuario.** Los cinco gates se relevean. Con
   `relayGates: "judgment-only"` responde los dos derivables de los labels, y eso
   es una concesión configurada, no el default.

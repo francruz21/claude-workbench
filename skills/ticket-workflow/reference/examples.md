@@ -174,15 +174,19 @@ de trabajo (no rebase, no al revés) y verifica que no toquen el modal.
 
 > **Usuario:** sí
 
-## Turno 8 — push y comentario en el ticket (gate 4)
+## Turno 8 — rama lista para publicar y comentario en el ticket
 
-> **Claude:** ¿Publico la rama `fix/EX-107-solucion-error-color-modal` al remoto?
+Con el commit ya hecho, Claude no pushea — nunca lo hace, ni siquiera acá.
+Reporta la rama como lista para publicar, nombrándola, y espera:
 
-> **Usuario:** dale
+> **Claude:** Listo para publicar: `fix/EX-107-solucion-error-color-modal`. El
+> commit está hecho; la rama no tiene upstream todavía porque eso lo publica
+> el usuario cuando quiera (Orca la muestra como *Publish Branch*). En cuanto
+> exista upstream, sigo con la PR.
 
-Claude pushea con `git push -u origin fix/EX-107-solucion-error-color-modal`
-(nunca contra `stage`) y, automáticamente, publica el comentario en EX-107. Sube
-las dos capturas de una en una y embebe cada `assetUrl` inline:
+Como ya hay evidencia del QA, publica el comentario en EX-107 sin esperar a
+que la rama esté publicada — eso puede tardar horas o días y la evidencia ya
+vale hoy. Sube las dos capturas de una en una y embebe cada `assetUrl` inline:
 
 > **Comentario publicado en EX-107 (Linear):**
 >
@@ -201,7 +205,20 @@ las dos capturas de una en una y embebe cada `assetUrl` inline:
 Seis líneas, arranca por el impacto para el usuario, una sola línea técnica, y
 las capturas se ven inline en vez de quedar como adjuntos al pie.
 
+*(Un tiempo después, el usuario publica la rama desde Orca —Publish Branch—,
+sin que Claude intervenga.)*
+
 ## Turno 9 — PR y revisión (gate 5)
+
+Antes de preguntar nada, Claude verifica si ya hay upstream:
+
+```
+git rev-parse --abbrev-ref --symbolic-full-name @{u}
+```
+
+Como el usuario ya publicó la rama, el comando devuelve
+`origin/fix/EX-107-solucion-error-color-modal` en vez de fallar, así que
+corresponde seguir con la PR.
 
 > **Claude:** ¿Abro la Pull Request de `fix/EX-107-solucion-error-color-modal`
 > contra `stage`, con `ana-dev` como reviewer?
@@ -225,5 +242,5 @@ quien lo trabajó — el reviewer se asignó solo en la PR.
 El usuario pega el link de EX-114. Como el config ya existe, Claude **no**
 repite el onboarding — pasa directo a leer el ticket (labels y casos de prueba),
 analizar a qué repo(s) aplica, y preguntar el tipo de rama. Los cinco gates
-siguen intactos: tipo de rama, cráneo, QA, commit/push y PR. Tener el config no
+siguen intactos: tipo de rama, cráneo, QA, commit y PR. Tener el config no
 ahorra ninguno de esos: ahorra el onboarding.

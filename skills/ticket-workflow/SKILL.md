@@ -8,11 +8,13 @@ description: Use cuando el usuario pega un link o ID de ticket (Linear, Jira, Tr
 ## Propósito
 
 Llevar un ticket de un tracker (Linear, Jira, Trello, GitHub Issues, etc.) desde
-que se recibe el link hasta que el trabajo está probado, pusheado, comentado en
+que se recibe el link hasta que el trabajo está probado, commiteado y dejado
+listo para publicar — y, una vez que el humano publica la rama, comentado en
 el ticket y con su PR abierta y asignada a revisión — siguiendo siempre la
 convención de ramas y commits específica del repo donde se trabaja, sin volver a
-preguntar lo ya configurado, y sin commitear ni pushear nunca sin confirmación
-explícita.
+preguntar lo ya configurado, sin commitear nunca sin confirmación explícita, y
+sin pushear nunca: publicar la rama es decisión del humano, no de quien trabaja
+el ticket.
 
 ## Las preguntas no se saltean nunca
 
@@ -23,7 +25,7 @@ Hay cinco puntos donde decide el usuario, no la skill:
 | 1 | Tipo de rama | 4 |
 | 2 | Cómo encarar la tarea (el cráneo) | 6 |
 | 3 | OK del QA manual | 8 |
-| 4 | Commit y push | 10 y 11 |
+| 4 | Commit | 10 |
 | 5 | Abrir la PR | 13 |
 
 **Un label del ticket o un valor del config pre-llenan la propuesta; no
@@ -446,22 +448,32 @@ descubierta en el repo) y mostrarlo al usuario antes de commitear. Ejemplo:
 Nunca ejecutar `git commit` sin una confirmación explícita en el turno actual,
 y nunca antes del OK del QA del paso 8.
 
-### 11. Push — con confirmación
+### 11. Rama lista para publicar — sin push
 
-Preguntar explícitamente antes de pushear: "¿Publico la rama
-`fix/EX-107-...` al remoto?" Nunca pushear sin confirmación en el turno
-actual, y **nunca** pushear ni commitear directo contra la rama base — solo
-contra la rama de trabajo.
+El commit del paso 10 ya está hecho. Esto **no es un paso de push**: publicar
+la rama no es tarea de quien trabaja el ticket, es del humano. Nunca se
+ejecuta `git push`, ni `git push -u`, ni ninguna variante, ni siquiera contra
+la rama de trabajo — eso no cambió por sacar el push de acá, nunca fue
+tarea de este flujo publicar nada al remoto.
 
-La primera vez, con upstream: `git push -u origin <rama-de-trabajo>`. Verificar
-`git branch --show-current` antes de pushear, no confiar en la memoria de qué
-rama está activa.
+La rama se deja **sin upstream, a propósito**: es justo lo que en Orca se ve
+como *Publish Branch*. Reportarlo nombrando la rama de trabajo explícita y
+esperar, sin insistir ni preguntar de nuevo si se publica:
+
+> Listo para publicar: `fix/EX-107-solucion-error-color-modal`. El commit está
+> hecho; la rama no tiene upstream todavía porque eso lo publica quien
+> corresponda. En cuanto exista upstream, sigo con la PR.
+
+No hay nada más que hacer en este paso hasta que el humano publique la rama —
+ver el paso 13 para cómo se detecta eso.
 
 ### 12. Comentario en el ticket, con capturas embebidas — automático
 
-Inmediatamente después de un push confirmado, publicar un comentario en el
-ticket. No pedir confirmación adicional: ya quedó autorizado al confirmar el
-push.
+Inmediatamente después de dejar la rama lista para publicar (paso 11),
+publicar un comentario en el ticket. No pedir confirmación adicional: ya
+quedó autorizado al confirmar el commit del paso 10 — no depende de que la
+rama ya esté publicada, porque eso ahora lo controla el humano y puede tardar
+horas o días.
 
 **Formato del comentario — 3 a 6 líneas.** Lo lee gente de negocio y gente
 técnica, así que:
@@ -480,7 +492,23 @@ el comentario terminado, en [`reference/examples.md`](reference/examples.md).
 
 ### 13. Pull Request — con confirmación
 
-Preguntar si se quiere abrir la PR. Si el usuario confirma:
+**Antes de preguntar nada, verificar que la rama ya tenga upstream** — o sea,
+que el humano ya la publicó desde el paso 11:
+
+```
+git rev-parse --abbrev-ref --symbolic-full-name @{u}
+```
+
+- **Falla** (`fatal: no upstream configured` o similar) → todavía no se
+  publicó. No es un error ni algo para resolver: **esperar**. No pushear para
+  destrabarlo, no volver a preguntar "¿publico?" — esa pregunta ya se contestó
+  (o se dejó pendiente) en el paso 11. Si el usuario pregunta por el estado,
+  decir que sigue esperando la publicación de la rama.
+- **Devuelve la rama remota** (ej. `origin/fix/EX-107-...`) → ya está
+  publicada. Seguir con la pregunta de abrir la PR (gate 5), como siempre.
+
+Con upstream confirmado, preguntar si se quiere abrir la PR. Si el usuario
+confirma:
 
 1. **Base = la rama de la que nació la rama de trabajo** (la anotada en el
    paso 5: `dev`, `stage`, o la que indicó el tag del ticket). **Nunca `main`**,
@@ -512,9 +540,10 @@ mover el estado a `In Review`.
 Si el config ya existe para este repo, saltar directo del paso 2 al 4 (no se
 repite el onboarding). Los únicos puntos que siempre requieren intervención del
 usuario son los cinco gates: el tipo de rama (paso 4), **el OK del cráneo
-(paso 6)**, **el OK del QA (paso 8)**, la confirmación de commit y push (pasos
-10 y 11) y la confirmación de PR (paso 13). Que el config exista ahorra el
-onboarding, no los gates.
+(paso 6)**, **el OK del QA (paso 8)**, la confirmación de commit (paso 10) y la
+confirmación de PR (paso 13). El paso 11 no es un gate: no hay push que
+confirmar, la rama queda lista para publicar y se espera al humano. Que el
+config exista ahorra el onboarding, no los gates.
 
 ## Checklist
 
@@ -533,8 +562,9 @@ onboarding, no los gates.
 - [ ] El usuario dio el OK explícito del QA antes de commitear.
 - [ ] Antes del commit se verificó que la rama estuviera al día con su base, y si no, se mergeó la base dentro de la rama de trabajo.
 - [ ] El commit se propuso y se confirmó explícitamente antes de ejecutarse.
-- [ ] El push se confirmó explícitamente antes de ejecutarse, y nunca fue contra la rama base.
-- [ ] El comentario del ticket se publicó tras el push, en 3-6 líneas, con las capturas embebidas inline (no como adjuntos al pie).
+- [ ] No se ejecutó ningún `git push`: la rama quedó sin upstream a propósito y se reportó como lista para publicar, nombrándola explícitamente.
+- [ ] El comentario del ticket se publicó tras dejar la rama lista para publicar, en 3-6 líneas, con las capturas embebidas inline (no como adjuntos al pie).
+- [ ] Antes de abrir la PR se verificó que la rama ya tuviera upstream (`@{u}`); si no lo tenía, se esperó sin pushear ni volver a preguntar.
 - [ ] La PR apunta a la rama de nacimiento y no a `main`, y quedó con reviewer asignado en GitHub.
 - [ ] El ticket quedó en `In Review` y la tarjeta de Orca en `in-review`.
 
@@ -600,10 +630,14 @@ el comentario final publicado en el ticket con las capturas embebidas.
 - **Preguntar el onboarding de nuevo** cuando el config ya existe — revisar
   siempre el archivo antes de preguntar cualquier cosa que ya podría estar
   configurada.
-- **Commitear o pushear sin decirlo explícitamente en el turno** — una
-  confirmación de una tarea anterior no cuenta para la tarea actual.
-- **Pushear contra `dev`** por asumir que la rama de trabajo ya "es" la base —
-  siempre verificar `git branch --show-current` antes de pushear.
+- **Commitear sin decirlo explícitamente en el turno** — una confirmación de
+  una tarea anterior no cuenta para la tarea actual.
+- **Pushear, en cualquier forma y contra cualquier rama** — no es que haga
+  falta pedir confirmación antes de hacerlo: no es tarea de quien trabaja el
+  ticket, nunca. Publicar la rama es del humano; y el riesgo de antes no
+  desapareció, solo cambió de manos — si el humano publica asumiendo que la
+  rama de trabajo ya "es" la base, sigue siendo pushear contra `dev` por
+  error. Avisarlo si se detecta, pero no es algo que este flujo ejecute.
 - **Inventar el prefijo del workspace** a partir del nombre de la empresa en
   vez del ID real del ticket (ej. asumir `EXAMPLE-107` cuando el ID real es
   `EX-107`).
@@ -624,9 +658,10 @@ el comentario final publicado en el ticket con las capturas embebidas.
   la PR automáticamente (`head_ref_deleted`) en vez de re-apuntarla. Para
   corregir un nombre de rama con PR ya abierta: rename local + push de la
   rama nueva + PR nueva contra ese nombre.
-- **Publicar el comentario en el ticket antes del push real**, o pedir
-  confirmación redundante para ese comentario — el punto de autorización es el
-  push, no un paso aparte.
+- **Pedir confirmación redundante para el comentario del ticket** — el punto de
+  autorización es el commit del paso 10, no un paso aparte. Atarlo a que la
+  rama ya esté publicada la dejaría secuestrada por tiempo indefinido: ese
+  push, ahora del humano, puede tardar horas o días.
 - **Asumir la `baseBranch` default cuando el ticket no tiene tag de
   ambiente** — la ausencia de señal significa preguntar, no completar en
   silencio con `dev` u otro default configurado.
