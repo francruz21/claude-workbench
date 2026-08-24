@@ -268,13 +268,26 @@ repo (campo `branchNameCI`) para no tener que redescubrirlo cada vez.
    prefijo de usuario. Ejemplo: `gitBranchName` =
    `<usuario>/tck-138-<descripcion-de-la-rama>`
    con `type=feat` da `feat/TCK-138-<descripcion-de-la-rama>`.
-   Si la PR ya se creó contra el nombre viejo y hay que renombrar la rama en
-   GitHub, **no usar el endpoint de rename de la API** (`POST
+   Si la PR ya se creó contra el nombre viejo y hay que renombrar la rama,
+   **no usar el endpoint de rename de la API** (`POST
    .../branches/{branch}/rename`) — cierra automáticamente cualquier PR
    abierta porque borra el ref viejo (`head_ref_deleted`) en vez de
-   actualizar su head. En cambio: renombrar local (`git branch -m`), pushear
-   la rama nueva, borrar la vieja, y abrir una PR nueva contra la rama
-   renombrada (la PR vieja queda cerrada como referencia histórica).
+   actualizar su head.
+
+   El reparto es el mismo que en el resto del flujo: lo local es de quien
+   trabaja el ticket, lo que escribe en el remoto es del humano.
+
+   1. Renombrar local con `git branch -m <nombre-nuevo>`. Preserva los cambios
+      sin commitear y no toca el remoto.
+   2. Reportar que la rama renombrada quedó lista para publicar, nombrándola, y
+      **esperar**. No se pushea la rama nueva ni se borra la vieja: las dos son
+      escrituras al remoto.
+   3. Cuando exista upstream para el nombre nuevo, abrir una PR nueva contra la
+      rama renombrada — es el gate 5 otra vez, no un trámite.
+
+   La rama vieja del remoto y la PR vieja las cierra el humano; la PR vieja
+   queda como referencia histórica. Si no se borra la rama vieja, no se rompe
+   nada: queda un ref huérfano sin PR asociada.
 
    **Cualquier otro tracker** (Jira, Trello, GitHub Issues sin este campo):
    usar el patrón `{type}/{ticketId}-{descripción-corta}`, en el idioma
@@ -656,8 +669,10 @@ el comentario final publicado en el ticket con las capturas embebidas.
 - **Renombrar una rama remota con PR abierta usando el endpoint de rename de
   GitHub** (`branches/{branch}/rename`) — borra el ref viejo y GitHub cierra
   la PR automáticamente (`head_ref_deleted`) en vez de re-apuntarla. Para
-  corregir un nombre de rama con PR ya abierta: rename local + push de la
-  rama nueva + PR nueva contra ese nombre.
+  corregir un nombre de rama con PR ya abierta: rename local, reportar como
+  lista para publicar, y PR nueva cuando el humano publicó el nombre nuevo. El
+  push de la rama renombrada y el borrado de la vieja **no** son de quien
+  trabaja el ticket, igual que en el paso 11.
 - **Pedir confirmación redundante para el comentario del ticket** — el punto de
   autorización es el commit del paso 10, no un paso aparte. Atarlo a que la
   rama ya esté publicada la dejaría secuestrada por tiempo indefinido: ese
