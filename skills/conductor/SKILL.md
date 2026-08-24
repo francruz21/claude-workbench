@@ -1,6 +1,6 @@
 ---
 name: conductor
-description: Use cuando el usuario pega uno o varios links o IDs de ticket y espera que Claude los trabaje en paralelo supervisando agentes, en vez de trabajarlos él mismo en esta sesión. Crea un worktree con su propio agente por ticket, relevea al usuario los gates de ticket-workflow, anuncia en Discord cada ticket en cuanto sus PRs pasan el gate, y limpia los worktrees cuando los PRs están mergeados. NO usar para un solo ticket que el usuario quiere trabajar acá mismo (usar ticket-workflow directo), ni para anunciar PRs que no pasaron por este flujo.
+description: Use cuando el usuario pega uno o varios links o IDs de ticket y espera que Claude los trabaje en paralelo supervisando agentes, en vez de trabajarlos él mismo en esta sesión. Crea un worktree con su propio agente por ticket, relevea al usuario los gates de ticket-workflow, anuncia en Discord cada ticket en cuanto sus PRs pasan el gate, y cierra el worktree de cada ticket en cuanto su PR quedó publicada y anunciada, sin esperar el merge. NO usar para un solo ticket que el usuario quiere trabajar acá mismo (usar ticket-workflow directo), ni para anunciar PRs que no pasaron por este flujo.
 ---
 
 # Conductor
@@ -10,8 +10,8 @@ description: Use cuando el usuario pega uno o varios links o IDs de ticket y esp
 Supervisar varios tickets a la vez sin perder los controles que hacen confiable
 el trabajo de cada uno. Por cada ticket, un worktree con su propio agente que lo
 trabaja con `ticket-workflow`; el conductor coordina, transporta las decisiones
-al usuario, anuncia los PRs cuando están verdes, y limpia cuando están
-mergeados.
+al usuario, anuncia los PRs cuando están verdes, y cierra cada worktree en
+cuanto su ticket quedó anunciado.
 
 El conductor **no hace el trabajo del ticket** y **no agrega autonomía**. Lo que
 agrega es paralelismo y orden.
@@ -66,7 +66,7 @@ parece necesario, la respuesta es preguntarle al usuario, no hacerlo.
 - Pega uno y dice explícitamente que lo trabaje en un worktree aparte, o que lo
   supervise.
 - Pide anunciar en Discord los PRs de tickets que se trabajaron con este flujo.
-- Pide limpiar los worktrees de tickets ya mergeados.
+- Pide limpiar los worktrees de tickets ya anunciados.
 
 ## Cuándo NO usarla
 
@@ -172,9 +172,11 @@ preguntar: un ping falso es peor que no mandar nada.
 
 ### 6. Limpieza — confirma
 
-Detectar los PRs mergeados, correr las tres verificaciones (en el wrapper y en
-cada submódulo), mostrar qué se va a borrar con el nombre del agente, esperar
-OK, y borrar. Ver [`reference/cleanup.md`](reference/cleanup.md).
+Detectar los tickets ya publicados y anunciados —**no** se espera el merge, porque
+un worktree vivo por cada ticket en revisión bloquea el ambiente local—, correr
+las tres verificaciones (en el wrapper y en cada submódulo), mostrar qué se va a
+borrar con el nombre del agente, esperar OK, bajar el container, liberar los
+puertos y borrar. Ver [`reference/cleanup.md`](reference/cleanup.md).
 
 Si algo no está limpio, no borrar y decir qué quedó y dónde.
 

@@ -1,4 +1,4 @@
-# Limpieza — detectar merged y borrar
+# Limpieza — cerrar al publicar y anunciar
 
 Detalle operativo de la fase 6. El principio que ordena todo este archivo: **el
 riesgo no es simétrico.** Un worktree de más no cuesta nada; un worktree borrado
@@ -12,13 +12,22 @@ Por cada PR del ticket, según el registro de la sesión:
 gh pr view <n> --repo "$SLUG" --json state,mergedAt,reviewDecision
 ```
 
-Un ticket está listo para limpiar cuando **todos** sus PRs tienen
-`state == "MERGED"`.
+Un ticket está listo para limpiar cuando **todos** sus PRs están publicados y su
+mensaje de anuncio ya salió. **No se espera el merge.**
 
-`reviewDecision == "APPROVED"` se **reporta pero no es condición**: un PR puede
-mergearse por admin sin review formal, y lo que importa para poder borrar el
-worktree es que el código ya está en la rama base. Si el usuario quiere que
-además exija el approve, es una condición más en este mismo chequeo.
+El review puede tardar horas o días, y mientras tanto se sigue trabajando: un
+worktree vivo por cada ticket en revisión bloquea el ambiente local — puertos
+tomados, containers arriba, stacks que se pisan. Como la rama ya está en el
+remoto, el trabajo no vive en el worktree: está publicado. El worktree pasa a ser
+descartable.
+
+Eso corre el peso a las verificaciones de abajo. Con el gate de merge las tres
+eran cinturón y tirantes; sin él, **`git log @{u}..HEAD` vacío es la condición
+que sostiene todo**: es lo único que garantiza que no queda un commit local sin
+subir. Si esa falla y se borra igual, se pierde trabajo de verdad.
+
+`reviewDecision` se **reporta pero no es condición**: el disparador es el
+anuncio, no el approve.
 
 Un PR `CLOSED` sin `mergedAt` **no** habilita la limpieza: el trabajo se
 descartó, y puede que el usuario quiera recuperar algo de esa rama.
@@ -75,10 +84,11 @@ dónde, con la ruta.
 
 Mostrar qué se va a borrar, con el nombre del agente, y esperar OK:
 
-> **TCK-262 · slug-corto** está mergeado (PR #25 y #61). El worktree
-> está limpio, sin cambios sin commitear ni commits sin pushear, en el wrapper y
-> en los dos submódulos. Voy a cerrar el agente y borrar
-> `~/orca/workspaces/<proyecto>/tck-262-.../`. ¿Confirmás?
+> **TCK-262 · slug-corto** está publicado y anunciado (PR #25 y #61). El
+> worktree está limpio, sin cambios sin commitear ni commits sin pushear, en el
+> wrapper y en los dos submódulos. Voy a bajar el container, liberar los puertos,
+> cerrar el agente y borrar `~/orca/workspaces/<proyecto>/tck-262-.../`.
+> ¿Confirmás?
 
 Con OK:
 
@@ -93,10 +103,36 @@ Sin OK, o si el usuario no contesta: **no tocar nada.** El silencio no es un sí
 ## Lo que no se hace
 
 - **No borrar automáticamente**, ni aunque las tres verificaciones pasen.
-- **No mergear ni aprobar** para llegar al estado de "mergeado". El conductor
-  detecta que pasó; no lo provoca.
+- **No mergear ni aprobar** para llegar al estado de limpiable. El conductor
+  detecta que el PR se publicó y se anunció; no provoca ninguno de los dos.
 - **No borrar la rama remota.** Eso lo maneja GitHub según la config del repo, o
   el usuario.
-- **No borrar un worktree cuyo agente todavía está trabajando**, aunque los PRs
-  estén mergeados: primero se confirma que el agente terminó
+- **No borrar un worktree cuyo agente todavía está trabajando**, aunque el PR ya
+  se haya anunciado: primero se confirma que el agente terminó
   (`worker_done` recibido, o su terminal ya no aparece en `terminal list`).
+
+## Volver a trabajar el ticket
+
+Cerrar al anunciar significa que el review llega cuando el worktree ya no está.
+Eso es esperado, no un problema: la rama vive en el remoto, así que se recrea.
+
+```bash
+orca-ide worktree create --repo id:<wrapperRepoId> --name <slug> \
+  --base-branch <rama-de-trabajo-publicada> --agent claude --json
+```
+
+La rama de trabajo ya existe en el remoto, así que se usa como base y no hay que
+cortar nada nuevo. Los cambios del review se commitean y pushean sobre ella, y la
+PR abierta los recoge sola.
+
+Si el ticket vuelve a la cola, **el anuncio no se repite**: la label de
+`notifiedLabel` sigue puesta y es lo que evita anunciar dos veces el mismo
+ticket.
+
+## Efecto colateral conocido
+
+Al borrar el worktree, el registro del submódulo en Orca queda huérfano: no hay
+`orca repo remove` para limpiarlo. Se acumula un registro por submódulo por
+ticket cerrado. No rompe nada — el `repo add` de la fase 5 es idempotente y
+vuelve a apuntar bien la próxima vez — pero la lista de repos de Orca crece y hay
+que saber por qué.
