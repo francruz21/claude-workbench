@@ -34,7 +34,20 @@ Mensajes exactos cuando fallan:
 - **Orca no corre** → "Orca no está corriendo. Levantalo con `orca-ide open` y volvé a intentar."
 - **Orquestación deshabilitada** → "La orquestación de Orca no está habilitada. Activala en Settings > Experimental y volvé a intentar." **No hay fallback**: sin orquestación no hay agentes que se hablen.
 - **Falta `ticket-workflow`** → "No encuentro la skill `ticket-workflow` en `~/.claude/skills/`. Es la que hace el trabajo de cada ticket; corré `./install.sh` de este repositorio primero." No improvisar el flujo del ticket.
-- **Falta el config** → correr `./install.sh`.
+- **Falta `~/.claude/workbench/user.json`** → "No encuentro tu config de
+  usuario. Corré `./install.sh` de este repositorio; te pregunta los valores y
+  lo escribe en `~/.claude/workbench/` con permisos 600."
+- **Falta `.claude/workbench.project.json`** → "Este workspace todavía no tiene
+  config de proyecto. **`install.sh` no la crea**: la escribe `ticket-workflow`
+  en su onboarding, la primera vez que trabajás un ticket en este repo. Corré un
+  ticket solo con `ticket-workflow` en el wrapper y volvé a la tanda."
+
+  La separación es a propósito y no un olvido: el config de proyecto se pregunta
+  cuando hay un repo y un ticket a la vista, que es cuando se sabe qué tracker,
+  qué prefijo, qué ramas base y qué reviewers tiene. El instalador no tiene ese
+  contexto. Mandar al usuario a `install.sh` por este archivo lo deja sin salida:
+  el instalador ve que el config de usuario ya existe, no toca nada, y la
+  precondición vuelve a fallar.
 
 ## Crear y nombrar un agente
 
