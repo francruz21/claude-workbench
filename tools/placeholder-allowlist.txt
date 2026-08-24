@@ -1,0 +1,13 @@
+# Una expresion por linea. Se aplican como regex extendida sobre la linea
+# completa: si alguna matchea, el hallazgo de esa linea se descarta.
+# Dominios reservados por la RFC 2606 para documentacion.
+@example\.(com|org|net)
+@example\.test
+@acme\.(test|com)
+@empresa\.atlassian\.net
+# Loopback: no identifica a nadie.
+(localhost|127\.0\.0\.1)
+# Los placeholders del propio repo.
+REPLACE_WITH_[A-Z_]+
+<[a-z-]+>
+OWNER/REPO

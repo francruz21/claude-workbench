@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Instalado por install.sh como symlink a .git/hooks/pre-commit.
+# Corre sobre el contenido staged, que es el que realmente se va a commitear.
+set -euo pipefail
+REPO="$(git rev-parse --show-toplevel)"
+exec "$REPO/tools/check-placeholders.sh" --staged

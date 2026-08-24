@@ -1,0 +1,38 @@
+name: placeholders
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck
+        run: |
+          # Se lintean solo los archivos que existen hoy, para que el paso
+          # sea honesto en cada punto del plan y no solo al final. Un
+          # archivo que SI existe y no pasa shellcheck sigue rompiendo el
+          # paso.
+          files=()
+          for f in tools/*.sh tools/hooks/pre-commit tools/tests/*.sh install.sh; do
+            [ -e "$f" ] && files+=("$f")
+          done
+          # Si "files" quedara vacio, "shellcheck" sin argumentos imprime el
+          # uso y sale con codigo 3: falla en rojo, no cuelga ni pasa en
+          # silencio. Es a proposito que no haya un guard "si no hay
+          # archivos, salir 0" antes de esta linea: ese guard convertiria un
+          # array vacio por error de config en un paso verde falso.
+          shellcheck "${files[@]}"
+      - name: chequeo de placeholders
+        # En CI no hay config local, asi que el data-driven se saltea con
+        # aviso y corre el chequeo por forma. Es honesto: el hook local es el
+        # que tiene los valores reales para comparar.
+        run: ./tools/check-placeholders.sh
+      - name: tests
+        run: |
+          for t in tools/tests/test-*.sh; do
+            echo "== $t"
+            bash "$t"
+          done

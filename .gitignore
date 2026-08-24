@@ -1,0 +1,5 @@
+# La config local nunca entra al repo: el repo es publico.
+.claude/workbench.project.json
+*.local.json
+# Espacio de trabajo de esta ejecucion (bitacora, briefs, reportes): nunca se commitea.
+.superpowers/
