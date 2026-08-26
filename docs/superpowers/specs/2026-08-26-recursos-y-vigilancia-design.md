@@ -109,6 +109,8 @@ es una cola de segundos, no de horas.
 | Confirmación para borrar | Ninguna: automático si las tres verificaciones pasan | Pedir OK convierte la limpieza en algo que depende de que el usuario esté mirando, y es lo que produjo los 64 GB acumulados |
 | Alcance del borrado | Worktree **y** las imágenes y volúmenes del ticket | Borrar solo el worktree recupera el 5% de lo que ese ticket ocupa |
 | Vigilancia del PR | `Monitor` persistente sobre `gh pr checks` | "Queda a la escucha" sin herramienta es la falla que se está corrigiendo |
+| Estado tras un crash | Reconstruido de Orca, `gh` y la label del tracker | Un archivo de estado propio agrega un dato que puede quedar viejo y mentir, justo en el momento en que todo lo demás ya falló |
+| Adopción de una tanda ajena | Automática si sus hijos están muertos | Preguntar siempre repite el síntoma (nadie retoma); adoptar siempre puede pisar a una sesión hermana viva |
 | CI en rojo | Vuelve al hijo con `reply` | Que lo arregle el conductor viola la regla de no editar worktrees ajenos; que lo vea el usuario es el trabajo manual que el conductor viene a absorber |
 
 ## Diseño
@@ -330,6 +332,98 @@ verificaciones en rojo, no se borra un PR `CLOSED` sin `mergedAt` —el trabajo 
 descartó y puede que el usuario quiera rescatar algo—, y no se borra la rama
 remota.
 
+### 10. Recuperación después de un crash
+
+Si la máquina colapsa o Orca se cierra por error, hoy el conductor no se entera
+de nada. Y cuando se le vuelve a mandar el trabajo hace una de tres cosas, todas
+malas: no lo detecta, lo trabaja él mismo, o **levanta un segundo hijo para un
+worktree que ya tiene uno**, duplicando agente, stack e imágenes.
+
+**Causa raíz: el registro `ticket → {name, worktreeId, handle...}` vive solo en
+la memoria del conductor** y muere con la sesión.
+
+#### El registro ya está persistido, y nadie lo leía
+
+No hace falta un archivo de estado. Orca guarda la identidad que la skill ya
+obliga a escribir — es exactamente para esto que se exige el nombre legible:
+
+```bash
+orca-ide worktree list --json   # displayName, linkedLinearIssue, branch, path, linkedPR
+orca-ide terminal list --json   # worktreeId, handle, connected, orphaned, lastOutputAt
+```
+
+Un worktree con `linkedLinearIssue: "TCK-262"` y
+`displayName: "TCK-262 · slug-corto"` **es** la entrada del registro. Lo que
+falta lo tienen las otras fuentes que la skill ya consulta: los PRs salen de
+`gh pr list --head <branch>` y de `linkedPR`, y si un ticket ya se anunció lo
+dice `notifiedLabel`. El estado completo es reconstruible sin memoria y sin
+archivo — que es, textualmente, lo que la skill ya manda hacer en *Cada sesión
+es su propia tanda*: *"se reconstruye el estado leyendo Orca y el tracker, nunca
+de memoria"*. La regla estaba escrita; estaba apagada.
+
+#### Paso 0.5 — Reconciliar antes de crear nada
+
+Corre **siempre** al arrancar, antes de la detección de tickets:
+
+1. Listar worktrees y quedarse con los que tienen `linkedLinearIssue`, o
+   `displayName` que matchee `<trackerPrefix>-<n> · `.
+2. Cruzar con `terminal list` por `worktreeId`. Un hijo está **vivo** si tiene
+   terminal con `connected: true` y `orphaned: false`.
+3. Reportar lo encontrado **antes de tocar nada**.
+
+#### La regla que ataca los tres síntomas
+
+**Antes de crear un worktree o un agente, se busca el ticket en la lista.** Tres
+salidas, y ninguna es "crear de nuevo":
+
+| Estado | Qué se hace |
+|---|---|
+| Worktree existe, hijo **vivo** | **Reattach.** Re-resolver el handle por `worktreeId` y mandarle `reply`. No se crea nada. |
+| Worktree existe, hijo **muerto** (`orphaned: true` o sin terminal) | **Revivir un agente en ese worktree** con `terminal create`. Nunca `worktree create`. |
+| No hay worktree | Recién ahí, el flujo normal del paso 3. |
+
+Y la que falta, que es la que más cuesta: **que un ticket ya tenga worktree no
+habilita a trabajarlo en la sesión del conductor.** Encontrar trabajo a medias
+no convierte al conductor en el hijo; sigue siendo el error más caro de la
+skill, y el crash es justo cuando más tienta cometerlo.
+
+El `worktreeId` y el `displayName` son estables; **el handle no** —la skill ya
+lo advierte, es routing y cambia si el pane se reinicia—, así que después de un
+crash el handle viejo no sirve y hay que re-resolverlo por `worktreeId`. Esa es
+la razón concreta por la que el nombre se exige al crear: es la única dirección
+que sobrevive.
+
+#### El spec de retoma no es el spec inicial
+
+Un hijo revivido que recibe el spec original vuelve a empezar de cero y pisa lo
+que ya estaba hecho. El de retoma le dice, antes que nada, que **mire dónde
+quedó**: su rama, sus commits, si ya hay PR, y qué dice el comentario del ticket.
+Recién con eso sigue. Todo lo demás del spec original vale igual.
+
+#### Reconciliar lo que el crash dejó tomado
+
+Un colapso no baja nada limpiamente. En el mismo paso 0.5:
+
+- **Containers arriba de tickets sin hijo vivo** → se bajan. Es memoria que
+  quedó tomada por un stack que ya no tiene dueño, y es parte de por qué la
+  máquina sigue pesada después de reabrir.
+- **El torniquete queda libre.** Si el que lo tenía murió, nadie lo tiene: se
+  reinicia en `null`, o el primer hijo que pida turno espera para siempre.
+
+#### Cuándo adopta sin preguntar, y cuándo pregunta
+
+La regla de *Cada sesión es su propia tanda* existe para que dos conductores
+vivos no le contesten el mismo gate al mismo hijo ni manden dos anuncios. Sigue
+en pie; lo que se agrega es distinguir la sesión hermana viva de la muerta, y
+`connected`/`orphaned` alcanzan:
+
+- **Todos los hijos del ticket muertos** → es un crash, no una sesión hermana:
+  ninguna sesión viva puede estar conduciendo agentes muertos. **Adopta y sigue,
+  sin preguntar**, que es lo que se le está pidiendo.
+- **Encuentra hijos vivos que no creó** → ahí sí hay ambigüedad real: puede
+  haber otra terminal conduciéndolos. **Pregunta una sola vez** por toda la
+  tanda, no ticket por ticket.
+
 ## Límite conocido
 
 Si la sesión se cierra, los monitores mueren. La regla de re-sincronización los
@@ -354,8 +448,8 @@ registra acá para que la próxima medición no lo redescubra:
 |---|---|
 | `skills/ticket-workflow/reference/qa-manual.md` | Pasos 8.0 y 8.7 |
 | `skills/ticket-workflow/SKILL.md` | Prohibición de delegar; paso 8 con turno |
-| `skills/conductor/SKILL.md` | Torniquete; fin de la tanda; re-sincronización |
-| `skills/conductor/reference/agents.md` | Sexta precondición; punto 9 del `--spec` |
+| `skills/conductor/SKILL.md` | Torniquete; fin de la tanda; re-sincronización; paso 0.5 de reconciliación |
+| `skills/conductor/reference/agents.md` | Sexta precondición; punto 9 del `--spec`; reattach/revivir; spec de retoma |
 | `skills/conductor/reference/discord.md` | Disparo del anuncio desde el evento `GREEN` |
 | `skills/conductor/reference/cleanup.md` | Limpieza automática; borrado de imágenes y volúmenes |
 | `core/config-schema.md` | `qa.stopCommand` y las tres claves de `qa` |
