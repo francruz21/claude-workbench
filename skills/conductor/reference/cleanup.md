@@ -82,29 +82,52 @@ Casos borde:
 Si alguna verificación no pasa: **no borrar**, y decir exactamente qué quedó y
 dónde, con la ruta.
 
-## Borrar
+## Borrar — automático
 
-Mostrar qué se va a borrar, con el nombre del agente, y esperar OK:
+**Las tres verificaciones siguen siendo condición obligatoria.** Lo que se
+elimina es el turno de espera, no el control: el OK del usuario nunca fue lo que
+hacía segura la limpieza. Lo que la hace segura es que el trabajo ya está en el
+remoto, y eso lo prueban las tres verificaciones, no una confirmación.
 
-> **TCK-262 · slug-corto** está publicado y anunciado (PR #25 y #61). El
-> worktree está limpio, sin cambios sin commitear ni commits sin pushear, en el
-> wrapper y en los dos submódulos. Voy a bajar el container, liberar los puertos,
-> cerrar el agente y borrar `~/orca/workspaces/<proyecto>/tck-262-.../`.
-> ¿Confirmás?
-
-Con OK:
+Con las tres en verde, se borra y se reporta. Y se borra **todo lo del ticket**,
+no solo el worktree:
 
 ```bash
+# 1. El worktree
 orca-ide worktree rm --worktree id:<worktreeId> --force --json
+
+# 2. Las imágenes que ese ticket construyó — el grueso de lo que se recupera
+docker image ls --format '{{.Repository}}:{{.Tag}}' \
+  | grep -F "<slug-del-worktree>" \
+  | xargs -r docker image rm
+
+# 3. Los volúmenes de su stack, que `compose down` no toca sin -v
+docker volume ls --format '{{.Name}}' \
+  | grep -F "<slug-del-worktree>" \
+  | xargs -r docker volume rm
 ```
 
 Y sacar el ticket del registro de la sesión.
 
-Sin OK, o si el usuario no contesta: **no tocar nada.** El silencio no es un sí.
+**Por qué las imágenes y no solo el worktree.** El worktree son unos cientos de
+MB de código; el par de imágenes que ese mismo ticket construyó pesa entre 5 y
+6,5 GB. Una limpieza que borra el worktree y deja las imágenes recupera el 5% y
+deja el 95% acumulándose ticket a ticket.
+
+**El filtro se ancla al slug del worktree, que es único por ticket. Nunca un
+`prune` global:** eso alcanzaría imágenes de tickets vivos y de otras sesiones,
+que es exactamente lo que la skill prohíbe cuando dice que no se toca lo que no
+es de uno. Solo sobreviven las imágenes de los tickets que se están trabajando.
+
+Se reporta después, en una línea:
+
+> **TCK-262 · slug-corto** limpiado: worktree, 2 imágenes (6,1 GB) y 1 volumen.
 
 ## Lo que no se hace
 
-- **No borrar automáticamente**, ni aunque las tres verificaciones pasen.
+- **No borrar con alguna verificación en rojo**, ni aunque el ticket esté
+  anunciado. Ahí se reporta qué quedó y dónde, con la ruta, y no se borra nada.
+- **No borrar con un `prune` global.** El filtro va anclado al slug del ticket.
 - **No mergear ni aprobar** para llegar al estado de limpiable. El conductor
   detecta que el PR se publicó y se anunció; no provoca ninguno de los dos.
 - **No borrar la rama remota.** Eso lo maneja GitHub según la config del repo, o

@@ -89,8 +89,9 @@ parece necesario, la respuesta es preguntarle al usuario, no hacerlo.
   sesión.
 - **No hace triage**: no reasigna, no cambia prioridad, estimación ni labels de
   ningún ticket.
-- **No borra un worktree sin confirmación**, ni con cambios sin commitear o
-  commits sin pushear.
+- **No borra un worktree con cambios sin commitear o commits sin pushear**, ni
+  con un `prune` global de Docker. Las tres verificaciones son la condición; la
+  confirmación del usuario, no.
 - **No mata un agente porque todavía no contestó.** Una tarea de código tarda
   entre 15 y 60 minutos; el silencio no es una falla.
 
@@ -362,7 +363,7 @@ el usuario**, que es el único caso donde hay algo que confirmar:
 
 Fuera de esos tres casos, crear y reportar. El resto de los controles no se
 mueve: los cinco gates se relevean igual, y la limpieza del paso 6 sigue
-pidiendo OK — ahí sí se borra trabajo.
+exigiendo sus tres verificaciones antes de borrar nada.
 
 ### 2. Onboarding
 
@@ -448,13 +449,13 @@ al ticket completo.
 Verificar que la mención quedó resuelta antes de enviar. Si no se puede, parar y
 preguntar: un ping falso es peor que no mandar nada.
 
-### 6. Limpieza — confirma
+### 6. Limpieza — automática
 
 Detectar los tickets ya publicados y anunciados —**no** se espera el merge, porque
 un worktree vivo por cada ticket en revisión bloquea el ambiente local—, correr
-las tres verificaciones (en el wrapper y en cada submódulo), mostrar qué se va a
-borrar con el nombre del agente, esperar OK, bajar el container, liberar los
-puertos y borrar. Ver [`reference/cleanup.md`](reference/cleanup.md).
+las tres verificaciones (en el wrapper y en cada submódulo), y con las tres en
+verde borrar el worktree, las imágenes que ese ticket construyó y los volúmenes
+de su stack — y reportarlo. Ver [`reference/cleanup.md`](reference/cleanup.md).
 
 Si algo no está limpio, no borrar y decir qué quedó y dónde.
 
@@ -502,9 +503,12 @@ Si algo no está limpio, no borrar y decir qué quedó y dónde.
 - [ ] Antes de conceder un turno liberado por red de seguridad, se verificó que los containers del anterior bajaron.
 - [ ] El `--spec` le dijo a cada agente que no delega en ningún otro agente, ni siquiera para el QA.
 - [ ] Nada se pusheó, mergeó ni aprobó desde el conductor.
-- [ ] No se relevaron gates, ni se anunció, ni se borraron worktrees de agentes que esta sesión no despachó.
+- [ ] No se relevaron gates, ni se anunció, ni se borraron worktrees de agentes vivos que esta sesión no despachó ni adoptó.
 - [ ] La tanda no se dio por cerrada con tickets publicados sin anunciar.
 - [ ] Al volver de un silencio, se re-consultó el estado de los PRs antes de contestarle al usuario.
+- [ ] Cada ticket anunciado se limpió solo, sin esperar un OK.
+- [ ] La limpieza borró también las imágenes y los volúmenes del ticket, no solo el worktree.
+- [ ] El filtro de imágenes se ancló al slug del ticket; no se corrió ningún `prune` global.
 
 ## Errores comunes
 
@@ -611,6 +615,10 @@ Si algo no está limpio, no borrar y decir qué quedó y dónde.
   rojo y 8 en pendiente, así que el rojo se pierde justo cuando importa.
 - **Mandarle al hijo "el CI está en rojo"** sin el job ni el error — lo obliga a
   ir a buscar lo que el conductor ya tenía leído.
+- **Borrar el worktree y dejar sus imágenes** — recupera el 5% de lo que ese
+  ticket ocupa. Las imágenes son 5-6,5 GB por ticket y no las reclama nadie.
+- **Limpiar con `docker image prune` o `system prune`** — alcanza tickets vivos
+  y de otras sesiones. El filtro va anclado al slug.
 
 ## Buenas prácticas
 
