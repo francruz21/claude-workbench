@@ -30,6 +30,32 @@ Si `app.running` es `false`, levantarla con `orca-ide open --json`. Si el CLI
 elegido no corre, reportar el error exacto y parar — no probar con otro
 ejecutable, que puede apuntar a otro build de Orca.
 
+## 0. Pedir turno antes de levantar nada
+
+**Un solo stack arriba en toda la máquina.** Levantar el tuyo sin pedir turno es
+lo que la vuelve inusable: cada stack son cinco containers y otro árbol
+bind-montado, y no tenés forma de ver cuántos hermanos ya están corriendo el
+suyo.
+
+Con conductor —el caso normal— se pide con `ask` y se espera:
+
+> pido turno de QA
+
+**Quedarte bloqueado ahí es lo esperado, no es que algo se colgó.** El conductor
+concede de a uno; si otro ticket está probando, tu turno llega cuando termine.
+No levantes "mientras tanto" y no lo preguntes de nuevo.
+
+Sin conductor (la skill corriendo directo con el usuario) no hay a quién
+pedirle, así que se mide antes de levantar:
+
+```bash
+free -m | awk '/^Mem:/ {print "disponible:", $7, "MB"}'
+swapon --show --noheadings --raw --bytes | awk '{u+=$4; t+=$3} END {if (t>0) printf "swap en uso: %.0f%%\n", 100*u/t}'
+```
+
+Si hay menos de 4 GB disponibles o el swap pasa del 50%, **decírselo al usuario
+y no levantar**: la máquina ya está paginando y el stack la termina de tumbar.
+
 ## 1. Levantar la app local
 
 Usar el `qa.startCommand` del config del repo, en background, y esperar a que
@@ -143,6 +169,31 @@ Mostrarle al usuario la lista de casos con su resultado y las capturas, y
 > ¿Te sirve así o querés que pruebe algo más antes de commitear?
 
 Un "dale" alcanza como OK. Un silencio o un cambio de tema, no.
+
+## 7. Bajar el stack y devolver el turno
+
+**Cuándo:** con el gate 3 ya resuelto, no cuando se sacaron las capturas. Que la
+app quede corriendo mientras el humano hace su QA manual es el propósito del
+paso 8, así que bajarla antes le saca justo lo que vino a buscar.
+
+```bash
+<qa.stopCommand del config>
+docker ps --format '{{.Names}}' | grep -F "<slug-del-worktree>" || echo "stack abajo"
+```
+
+Verificar que bajó: un `stopCommand` que falla en silencio deja los cinco
+containers arriba y el turno devuelto, que es el peor de los dos mundos —el
+siguiente hijo levanta el suyo creyendo que está solo.
+
+Después, avisar que se devuelve el turno:
+
+> QA cerrado, devuelvo el turno.
+
+**Si el gate 3 vuelve pidiendo cambios de código** —no "probá también este otro
+caso"—, se baja el stack y se devuelve el turno **ahí mismo**, antes de ponerse
+a corregir. Retenerlo mientras se re-implementa deja el torniquete cerrado media
+hora sin que nadie esté probando nada. Cuando haya algo nuevo que probar, se
+pide de nuevo desde la sección 0.
 
 ## Embeber las capturas en el comentario
 
