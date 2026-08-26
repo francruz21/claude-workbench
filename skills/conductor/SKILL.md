@@ -315,8 +315,9 @@ Un hijo sin nombre legible deja al usuario sin forma de referirse a él: la
 tarjeta muestra el slug crudo y los gates llegan de un agente anónimo. El
 `--display-name` va en un segundo comando, porque `create` no lo acepta.
 
-Registrar `ticket → {name, worktreeId, handle, taskId, dispatchId}`. El nombre
-es cómo el usuario y el conductor hablan de ese agente.
+Registrar `ticket → {name, worktreeId, handle, taskId, dispatchId, qaTurn}`. El
+nombre es cómo el usuario y el conductor hablan de ese agente; `qaTurn` arranca
+en `null` y es el torniquete del stack — ver *El torniquete de QA*.
 
 El `--spec` tiene que pedirle al agente que **registre en Orca los submódulos que
 toca** (`repo add` + `worktree set --display-name "<TICKET> · front|back"`). Orca
