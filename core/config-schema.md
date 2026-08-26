@@ -131,11 +131,21 @@ bajan desde la capa de usuario (ver la seccion siguiente).
 | `orca.worktreeLevel` | string | nivel de anidamiento de los worktrees |
 | `reviewers` | string[] | reviewers por defecto de este proyecto |
 | `qa` | object | configuracion de QA del proyecto |
+| `qa.startCommand` | string | comando que levanta la app local para el QA del paso 8 |
+| `qa.stopCommand` | string | comando que la baja y libera los puertos, al cerrarse el paso 8 |
+| `qa.url` | string | URL donde responde la app una vez levantada |
 | `repos` | array de `{slug, tag}` | repos del workspace que este proyecto conduce |
 | `orca.wrapperRepoId` | string | id en Orca del repo wrapper que agrupa `repos` |
 | `gateWorkflow` | string | workflow de CI que actua de gate antes de anunciar |
 | `notifiedLabel` | string | label que marca un ticket como ya anunciado |
 | `relayGates` | `"delicate-only"` \| `"judgment-only"` \| `"all"` | que gates viajan hasta el usuario. `"delicate-only"` es el **default**: el conductor resuelve todo gate con una respuesta recomendada que pueda defender en una linea, y escala solo lo delicado (arquitectura, contratos compartidos, permisos, lo irreversible, el alcance desbordado, dos caminos sin ganador claro) — ver la seccion *Que decide el conductor* de la skill. `"judgment-only"` resuelve solo los dos derivables de labels (tipo de rama y rama base) y releva craneo, QA y PR siempre. `"all"` releva los cinco, para quien quiera control total |
+
+### `qa.stopCommand` no es opcional
+
+Sin él no hay forma de bajar el stack al cerrar el paso 8, y el stack de cada
+ticket queda arriba tanto como su worktree — que puede ser días. Un proyecto que
+no lo declara deja el paso 8 sin cierre: ahí se pregunta, siguiendo
+`core/resolve.md`, y no se inventa un `down` a partir del `startCommand`.
 
 ### Por que esos cinco campos bajaron de `user` a `project`
 
@@ -169,7 +179,11 @@ no exige tocar nada compartido.
     "wrapperRepoId": "<id-del-repo-wrapper>"
   },
   "reviewers": ["<handle-reviewer>"],
-  "qa": { "<clave-de-qa>": "<valor-de-qa>" },
+  "qa": {
+    "startCommand": "<comando-que-levanta-la-app>",
+    "stopCommand": "<comando-que-la-baja>",
+    "url": "<url-local-de-la-app>"
+  },
   "repos": [{ "slug": "<slug-de-repo>", "tag": "<tag-de-repo>" }],
   "gateWorkflow": "<nombre-del-workflow>",
   "notifiedLabel": "<label-de-ya-anunciado>",
