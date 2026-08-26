@@ -33,7 +33,7 @@ Dos hallazgos que la medición desmiente y que cambian el diseño:
    Cada worktree nuevo bind-montea otro árbol completo —`node_modules`
    incluido— y `virtiofsd` lo cachea. El costo marginal de un ticket más no
    está en los 5 containers que suma, sino en el mount que agrega.
-2. **`permit-pdp` consume ~80% de un core en idle, y hay uno por ticket.** Dos
+2. **`<servicio-de-permisos>` consume ~80% de un core en idle, y hay uno por ticket.** Dos
    tickets son ~1,6 cores de 12 gastados en nada.
 
 ### Las cinco causas en el repo
@@ -439,7 +439,7 @@ registra acá para que la próxima medición no lo redescubra:
 
 - **La VM de Docker Desktop reserva 12,2 GB y no los devuelve.** Reducir su
   límite es configuración de la máquina.
-- **`permit-pdp` quema ~80% de un core en idle**, duplicado por ticket. Es una
+- **`<servicio-de-permisos>` quema ~80% de un core en idle**, duplicado por ticket. Es una
   característica del stack de trabajo, no de este repo.
 
 ## Archivos

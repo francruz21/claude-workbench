@@ -1336,7 +1336,7 @@ git commit -m "feat(conductor): la limpieza es automática y borra las imágenes
 
 ## Lo que este plan no hace
 
-- **No toca la VM de Docker Desktop ni `permit-pdp`.** Son 12,2 GB y ~80% de un
+- **No toca la VM de Docker Desktop ni `<servicio-de-permisos>`.** Son 12,2 GB y ~80% de un
   core por ticket, y son configuración de la máquina y del stack de trabajo, no
   de este repo. Están registrados en el spec para que la próxima medición no los
   redescubra.
