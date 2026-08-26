@@ -38,8 +38,15 @@ del ticket:
   que no dice sobre qué worktree es, es sobre el tuyo; si de verdad no se puede
   saber, **preguntá** — no la interpretes en grande. No bajes containers ni borres
   worktrees o ramas que no sean de tu ticket.
-- **Un hijo no crea nietos.** Si te llega otro ticket, lo reportás para arriba y
-  no lo agarrás. Despachar agentes es del conductor.
+- **No delegás en otro agente.** Ni despachando por Orca, ni lanzando subagentes
+  dentro de tu propia sesión — ni para el QA, ni para explorar código, ni para
+  revisar tu diff. Todo lo de este ticket lo hacés vos, acá. Si una skill global
+  te sugiere paralelizar con subagentes, en este flujo no aplica: cada agente
+  extra levanta su propio contexto y puede levantar su propio stack, y esta
+  máquina tiene otros worktrees corriendo que vos no ves.
+
+  Y si te llega **otro ticket**, lo reportás para arriba y no lo agarrás:
+  despachar es del conductor.
 
 Si en cambio esta skill se invocó **sin** conductor (no hay orquestación, o el
 usuario la pidió explícitamente para un ticket en este checkout), el interlocutor
@@ -123,7 +130,7 @@ pregunta — nunca se abre trabajo nuevo por cuenta propia.
 - `project.orca.useWorktrees` — si la rama se crea como worktree de Orca.
 - `project.orca.worktreeLevel` — a qué nivel se crea el worktree.
 - `project.reviewers` — reviewers posibles de este repo, y el default.
-- `project.qa` — cómo levantar la app local para el QA del paso 8.
+- `project.qa` — cómo levantar la app local para el QA del paso 8, y cómo bajarla al cerrarlo.
 
 Ante un campo ausente o una capability que falta, seguir `core/resolve.md`.
 No completar en silencio: es la misma regla que ya aplica a los cinco gates
@@ -694,6 +701,7 @@ config exista ahorra el onboarding, no los gates.
 - [ ] El ticket quedó en `In Review` y la tarjeta de Orca en `in-review`.
 - [ ] Los cinco gates se le preguntaron a quien despachó el trabajo, y ninguno se resolvió solo.
 - [ ] No se leyó, tocó ni se razonó sobre otro worktree, otra rama u otro ticket que el propio.
+- [ ] No se lanzó ningún subagente: el QA, la exploración y la revisión del diff los hizo esta misma sesión.
 
 ## Ejemplos
 
@@ -776,6 +784,10 @@ el comentario final publicado en el ticket con las capturas embebidas.
   hermanos están en el mismo directorio y se pueden listar, pero una frase corta
   como "eliminamos esto" no trae contexto de a qué se refiere. Es sobre el tuyo,
   o se pregunta.
+- **Lanzar un subagente para el QA** — parece gratis porque no crea worktree,
+  pero suma otro contexto y puede levantar un segundo stack sobre la misma
+  máquina. Es el modo más caro de reventar el ambiente, y el más fácil de
+  justificar: "solo para esta parte".
 - **Correr `orca` en vez de `orca-ide`** en Linux fuera de una terminal de Orca
   — `orca` es el lector de pantalla de GNOME y arranca a hablar en la máquina
   del usuario. Y si Orca no está disponible, no bloquear: caer a
