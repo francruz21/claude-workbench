@@ -19,7 +19,7 @@ En los ejemplos de abajo se usa `orca-ide`; sustituir por el que corresponda.
 
 ## Precondiciones
 
-Verificar las cinco **antes** de crear nada. Si una falla, parar y decir cuál:
+Verificar las seis **antes** de crear nada. Si una falla, parar y decir cuál:
 
 ```bash
 orca-ide status --json                            # app.running == true, runtime.state == "ready"
@@ -27,6 +27,9 @@ orca-ide orchestration task-list --json           # si falla: orquestación no h
 ls ~/.claude/skills/ticket-workflow/SKILL.md      # dependencia de este repositorio
 test -f ~/.claude/workbench/user.json             # config de usuario
 test -f .claude/workbench.project.json            # config de proyecto (wrapper)
+free -m                    # memoria disponible
+swapon --show              # swap en uso
+docker ps -q | wc -l       # containers vivos
 ```
 
 Mensajes exactos cuando fallan:
@@ -48,6 +51,18 @@ Mensajes exactos cuando fallan:
   contexto. Mandar al usuario a `install.sh` por este archivo lo deja sin salida:
   el instalador ve que el config de usuario ya existe, no toca nada, y la
   precondición vuelve a fallar.
+- **La máquina no da** → "Hay <N> MB disponibles y el swap está al <P>%, con
+  <C> containers arriba. Con eso, crear la tanda la tumba. Bajá lo que no estés
+  usando y volvemos." Los umbrales: **menos de 4 GB disponibles, o swap por
+  encima del 50%**.
+
+  Es la única precondición que mide el estado de la máquina y no la
+  configuración, así que es la única que puede pasar hoy y fallar en una hora.
+  Se verifica al crear la tanda, no una vez por sesión.
+
+Los umbrales son heurísticos y están elegidos para fallar del lado seguro:
+negarse a arrancar de más cuesta un mensaje, y arrancar de más cuesta la sesión
+entera del usuario, con el trabajo sin commitear que haya en cada worktree vivo.
 
 ## Crear y nombrar un agente
 

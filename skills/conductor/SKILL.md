@@ -250,8 +250,9 @@ stacks en la máquina, que es justo lo que el torniquete existe para evitar.
 
 ### 0. Precondiciones
 
-Las cinco, antes de crear nada: Orca corriendo, orquestación habilitada,
-`ticket-workflow` instalada, config de usuario y config de proyecto presentes. Si una falla, parar y decir cuál —
+Las seis, antes de crear nada: Orca corriendo, orquestación habilitada,
+`ticket-workflow` instalada, config de usuario y config de proyecto presentes, y
+la máquina con margen de memoria y swap. Si una falla, parar y decir cuál —
 ver [`reference/agents.md`](reference/agents.md#precondiciones) para los
 comandos y los mensajes exactos.
 
@@ -384,7 +385,7 @@ Si algo no está limpio, no borrar y decir qué quedó y dónde.
 
 ## Checklist
 
-- [ ] Se verificaron las cinco precondiciones antes de crear nada.
+- [ ] Se verificaron las seis precondiciones antes de crear nada, incluida la memoria disponible y el swap.
 - [ ] Cada ticket se despachó a un hijo con su worktree — ninguno se trabajó en la sesión del conductor, ni siquiera el único de la tanda.
 - [ ] No se preguntó si había que crear el worktree ni el hijo: se creó y se reportó.
 - [ ] Los tickets que el usuario nombró se crearon sin pedir OK, y se reportó qué se creó.
