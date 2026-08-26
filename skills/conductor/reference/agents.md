@@ -456,3 +456,80 @@ agente, sin intentar resolverlo por él.
 - No manda mensajes de ciclo de vida a grupos (`@all`, `@claude`): `worker_done`
   y `heartbeat` van al handle concreto, o generan mail falso en terminales que
   no tienen nada que ver.
+
+## Vigilar el gate de un PR
+
+`check --wait` oye **solo** mensajes de los hijos por Orca. El CI de GitHub no
+manda ninguno, y el push del humano tampoco. Por eso "quedar a la escucha" sin
+un mecanismo propio termina en un PR verde que nadie anuncia.
+
+Apenas se registra un PR, se arma **un monitor persistente por PR**, que emite
+una línea por transición y sigue vivo mientras el conductor hace otra cosa:
+
+```bash
+prev=""
+while true; do
+  out=$(gh pr checks "$N" --repo "$SLUG" --json name,bucket 2>/dev/null)
+  if [ -z "$out" ]; then
+    cur=ERROR
+  else
+    cur=$(jq -r 'if length == 0 then "SINCHECKS"
+                 elif any(.[].bucket; . == "fail" or . == "cancel") then "RED"
+                 elif any(.[].bucket; . == "pending") then "PENDING"
+                 else "GREEN" end' <<<"$out")
+  fi
+  [ "$cur" != "$prev" ] && [ "$cur" != "PENDING" ] && echo "$TICKET PR#$N $cur"
+  prev=$cur; sleep 60
+done
+```
+
+Tres detalles de los que depende que funcione, y que se equivocan solos:
+
+- **El estado sale del JSON, nunca del exit code.** `gh pr checks` sale con 1
+  cuando algún check falla y con 8 cuando hay pendientes. Un `|| echo ERROR`
+  colapsa el rojo y el pendiente en "error de consulta", y el monitor se queda
+  mudo ante la falla que viene a detectar.
+- **`length == 0` se evalúa antes que todo.** Sobre una lista vacía `all(...)`
+  devuelve verdadero, así que un PR **sin checks corridos** se reportaría verde
+  y se anunciaría solo. Es el error que esta skill ya tiene documentado ("falta
+  el guarda `length > 0`").
+- **El verde se decide por descarte.** Preguntar "¿son todos `pass`?" deja fuera
+  a `skipping`, y un PR con los checks salteados se quedaría en `PENDING` para
+  siempre: como `PENDING` no emite, nadie se entera. La pregunta correcta es
+  "¿queda alguno sin terminar?". `cancel` cuenta como rojo: un check cancelado
+  no probó nada.
+
+### Qué se hace con cada estado
+
+| Estado | Acción |
+|---|---|
+| `GREEN` | Dispara el anuncio de ese ticket, si todos sus PRs están verdes |
+| `RED` | Se lee la falla y vuelve **al hijo** con `reply` |
+| `SINCHECKS` | No es verde. Se reporta al usuario y se espera |
+| `ERROR` | Se reporta y el monitor sigue; si se repite, sube al usuario |
+
+**`RED` — la falla vuelve al hijo, no al usuario:**
+
+```bash
+gh run view --repo "$SLUG" --log-failed | tail -60
+orca-ide orchestration reply --id <msgId> \
+  --body "El CI falló en <job>: <error>. Corregí y avisá cuando esté." --json
+```
+
+Mandarle "está en rojo" a secas lo obliga a salir a averiguar lo que el conductor
+ya tiene delante. Es el mismo camino que los hallazgos de `code-review`: **lo del
+hijo lo arregla el hijo**, y el conductor no edita worktrees ajenos. Si hace falta
+volver a probar, el hijo pide turno de QA otra vez.
+
+**`ERROR` no puede matar la vigilancia.** Sin red, sin sesión de `gh` o con el PR
+borrado, el monitor reporta y sigue. Un monitor que se muere en silencio es
+indistinguible de uno que no tiene nada que decir — que es exactamente el modo de
+falla que todo esto viene a corregir.
+
+**El monitor es el despertador, no el juez.** Mide con `gh pr checks`, que ve
+todos los checks; el filtro de `discord.md` decide el anuncio con
+`statusCheckRollup` acotado a `gateWorkflow`. No miden lo mismo a propósito: el
+monitor existe para que el conductor **se entere** de que algo cambió, y la
+decisión de anunciar sigue siendo del filtro, que está verificado contra datos
+reales. Que el monitor sea más ancho es conservador en la dirección correcta —
+un rojo fuera del gate igual merece la atención del hijo. **No los alinees.**

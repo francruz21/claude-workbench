@@ -5,6 +5,14 @@ hardcodea.
 
 ## Juntar los PRs verdes
 
+**El disparador es el evento `GREEN` del monitor del PR**, no una revisión
+manual ni un pedido del usuario. Ver
+[`agents.md`](agents.md#vigilar-el-gate-de-un-pr). Cuando el último PR de un
+ticket pasa a `GREEN`, sale el mensaje de ese ticket.
+
+`SINCHECKS` **no habilita a anunciar**: un PR sin checks corridos no es un PR
+verde.
+
 Una corrida por repo de `config.repos`. El filtro está verificado contra datos
 reales:
 

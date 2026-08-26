@@ -355,10 +355,14 @@ de un ticket pasan el gate, sale su mensaje — solo, sin esperar a que otros
 tickets estén listos. Un ticket con front y back manda los dos PRs juntos; uno de
 una sola rama manda uno.
 
-**El conductor queda a la escucha.** Cuando un PR se publica, hay que seguir el
-gate hasta que resuelva y disparar el anuncio ahí, sin que el usuario lo pida. Un
-ticket que se pone verde y nadie anuncia es un PR esperando a que alguien se
-acuerde.
+**El conductor vigila con un mecanismo, no con una promesa.** Apenas se registra
+un PR, arma un monitor persistente sobre su gate. Cuando emite `GREEN` y todos
+los PRs de ese ticket están verdes, **el anuncio sale ahí**, sin que el usuario
+lo pida. Cuando emite `RED`, la falla vuelve al hijo. Ver
+[`reference/agents.md`](reference/agents.md#vigilar-el-gate-de-un-pr).
+
+Un ticket que se pone verde y nadie anuncia es un PR esperando a que alguien se
+acuerde — y acordarse no es un mecanismo.
 
 El envío es **automático**: no se le muestra el mensaje al usuario ni se espera
 OK. Lo que lo hace seguro es que el alcance dejó de ser una decisión — el mensaje
@@ -413,6 +417,10 @@ Si algo no está limpio, no borrar y decir qué quedó y dónde.
 - [ ] El anuncio salió solo, sin pedirle OK al usuario, y con el alcance acotado a ese ticket.
 - [ ] Se verificó que la mención quedó resuelta antes de enviar.
 - [ ] La label de anunciado se puso **después** del envío exitoso.
+- [ ] Cada PR registrado quedó con su monitor de gate armado.
+- [ ] El anuncio salió disparado por el evento `GREEN`, no porque el usuario lo recordara.
+- [ ] Ningún PR en `SINCHECKS` se tomó por verde.
+- [ ] Cada `RED` volvió al hijo con la falla leída, no con un "está en rojo".
 - [ ] Antes de borrar, las tres verificaciones pasaron en el wrapper y en cada submódulo.
 - [ ] Nunca hubo dos stacks arriba a la vez: el turno de QA se concedió de a uno.
 - [ ] Antes de conceder un turno liberado por red de seguridad, se verificó que los containers del anterior bajaron.
@@ -506,6 +514,13 @@ Si algo no está limpio, no borrar y decir qué quedó y dónde.
   dos stacks arriba y el torniquete deja de servir para lo único que existe.
 - **Tratar como colgado a un hijo que espera turno** — es el conductor quien no
   le contestó todavía. Cerrarlo tira trabajo por un silencio que él mismo pidió.
+- **Prometer que se queda a la escucha sin armar el monitor** — `check --wait`
+  no oye al CI de GitHub. El PR se pone verde, nadie emite nada, y el usuario
+  tiene que venir a avisar que hace días que está listo.
+- **Decidir el estado del gate por el exit code de `gh pr checks`** — sale 1 en
+  rojo y 8 en pendiente, así que el rojo se pierde justo cuando importa.
+- **Mandarle al hijo "el CI está en rojo"** sin el job ni el error — lo obliga a
+  ir a buscar lo que el conductor ya tenía leído.
 
 ## Buenas prácticas
 
