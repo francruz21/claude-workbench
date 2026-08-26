@@ -130,7 +130,7 @@ bajan desde la capa de usuario (ver la seccion siguiente).
 | `orca.useWorktrees` | boolean | si este proyecto usa worktrees de Orca |
 | `orca.worktreeLevel` | string | nivel de anidamiento de los worktrees |
 | `reviewers` | string[] | reviewers por defecto de este proyecto |
-| `qa` | object | configuracion de QA del proyecto |
+| `qa` | object | el objeto que agrupa las tres claves de abajo; no se declara solo |
 | `qa.startCommand` | string | comando que levanta la app local para el QA del paso 8 |
 | `qa.stopCommand` | string | comando que la baja y libera los puertos, al cerrarse el paso 8 |
 | `qa.url` | string | URL donde responde la app una vez levantada |
@@ -146,6 +146,11 @@ Sin él no hay forma de bajar el stack al cerrar el paso 8, y el stack de cada
 ticket queda arriba tanto como su worktree — que puede ser días. Un proyecto que
 no lo declara deja el paso 8 sin cierre: ahí se pregunta, siguiendo
 `core/resolve.md`, y no se inventa un `down` a partir del `startCommand`.
+
+Las tres claves de `qa` son la lista completa y autoritativa: la fila `qa` de la
+tabla existe sólo porque una skill referencia el objeto entero, y no describe
+ningún valor por su cuenta. Una clave nueva se agrega a la tabla como
+`qa.<nombre>`, no adentro de esa fila.
 
 ### Por que esos cinco campos bajaron de `user` a `project`
 
