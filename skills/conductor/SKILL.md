@@ -246,6 +246,30 @@ En los dos casos hay que **verificar que sus containers bajaron** antes de
 conceder el siguiente: un turno liberado sobre un stack que quedó arriba pone dos
 stacks en la máquina, que es justo lo que el torniquete existe para evitar.
 
+## Cuándo termina la tanda
+
+**La tanda no termina cuando los hijos reportan `worker_done`.** Termina cuando
+**cada** ticket está anunciado y su worktree limpiado.
+
+Entre una cosa y la otra hay una espera que puede durar días y que **no depende
+de ningún hijo**: la publicación de la rama, que la hace el humano a mano. Un
+ticket en esa espera es trabajo abierto, no trabajo terminado, y tratarlo como
+terminado es lo que hace que un PR verde se quede sin anunciar hasta que el
+usuario venga a recordarlo.
+
+### Re-sincronizar al volver
+
+Los monitores viven mientras vive la sesión. Así que **al recibir cualquier
+turno del usuario, antes de contestarle**, el conductor:
+
+1. Re-consulta el estado de los PRs de su registro.
+2. Re-arma los monitores que falten.
+3. Menciona lo que cambió mientras no estaba, si cambió algo.
+
+Sin esto, cerrar la terminal un viernes significa que el lunes nadie anuncia
+nada — y el usuario se entera cuando pregunta, que es el síntoma que este bloque
+existe para eliminar.
+
 ## Pasos detallados
 
 ### 0. Precondiciones
@@ -427,6 +451,8 @@ Si algo no está limpio, no borrar y decir qué quedó y dónde.
 - [ ] El `--spec` le dijo a cada agente que no delega en ningún otro agente, ni siquiera para el QA.
 - [ ] Nada se pusheó, mergeó ni aprobó desde el conductor.
 - [ ] No se relevaron gates, ni se anunció, ni se borraron worktrees de agentes que esta sesión no despachó.
+- [ ] La tanda no se dio por cerrada con tickets publicados sin anunciar.
+- [ ] Al volver de un silencio, se re-consultó el estado de los PRs antes de contestarle al usuario.
 
 ## Errores comunes
 
@@ -517,6 +543,9 @@ Si algo no está limpio, no borrar y decir qué quedó y dónde.
 - **Prometer que se queda a la escucha sin armar el monitor** — `check --wait`
   no oye al CI de GitHub. El PR se pone verde, nadie emite nada, y el usuario
   tiene que venir a avisar que hace días que está listo.
+- **Dar la tanda por terminada con el `worker_done` del último hijo** — queda
+  afuera justo el tramo que no depende de nadie del equipo: la publicación de la
+  rama y el gate. Ahí es donde un ticket se pierde durante días.
 - **Decidir el estado del gate por el exit code de `gh pr checks`** — sale 1 en
   rojo y 8 en pendiente, así que el rojo se pierde justo cuando importa.
 - **Mandarle al hijo "el CI está en rojo"** sin el job ni el error — lo obliga a
