@@ -91,7 +91,7 @@ comandos y los mensajes exactos.
 Sin orquestación no hay fallback. Sin `ticket-workflow` no se improvisa el flujo
 del ticket.
 
-### 1. Detección — confirma
+### 1. Detección — automático si el usuario los nombró
 
 Parsear lo que pegó el usuario:
 
@@ -102,13 +102,28 @@ Parsear lo que pegó el usuario:
 Leer cada ticket por el MCP del tracker. Si no hay MCP para ese tracker, pedir
 el contenido pegado; no usar WebFetch como sustituto.
 
-**Confirmar la lista antes de crear nada:**
+**Si el usuario nombró los tickets, no se pregunta: se crean y se reporta.**
+Pegar un link o un ID y mandarlo al conductor ya es la decisión — volver a
+pedir un OK es un turno perdido que no protege nada, porque el alcance no lo
+eligió el conductor. Se dice qué se creó, no se pide permiso para crearlo:
 
-> Detecté TCK-262 y TCK-257. Voy a crear dos worktrees con un agente cada uno.
-> ¿Confirmás?
+> Detecté TCK-262 y TCK-257. Creé dos worktrees con un agente cada uno:
+> **TCK-262 · slug-corto** y **TCK-257 · otro-slug**. Ya están trabajando.
 
-Si dos tickets tocan lo mismo, **decirlo** — el conductor no resuelve
-dependencias entre tickets, pero avisa antes de arrancar los dos en paralelo.
+**Se confirma antes de crear sólo cuando el alcance lo puso el conductor y no
+el usuario**, que es el único caso donde hay algo que confirmar:
+
+- El pedido es elástico (`"mis tickets"`, `"los últimos"`, `"lo que quedó
+  abierto"`) → ahí el conductor elegiría por él. Se pregunta cuáles, siempre.
+- Un ID pelado cuyo prefijo **no** coincide con el del repo de trabajo, o un
+  link que no se pudo leer por MCP → se confirma a qué ticket se refiere.
+- **Dos tickets que tocan lo mismo** → se avisa y se espera, antes de
+  arrancarlos en paralelo. El conductor no resuelve dependencias entre
+  tickets, pero no los larga a pisarse en silencio.
+
+Fuera de esos tres casos, crear y reportar. El resto de los controles no se
+mueve: los cinco gates se relevean igual, y la limpieza del paso 6 sigue
+pidiendo OK — ahí sí se borra trabajo.
 
 ### 2. Onboarding
 
@@ -185,7 +200,8 @@ Si algo no está limpio, no borrar y decir qué quedó y dónde.
 ## Checklist
 
 - [ ] Se verificaron las cuatro precondiciones antes de crear nada.
-- [ ] Se confirmó la lista de tickets detectados antes de crear worktrees.
+- [ ] Los tickets que el usuario nombró se crearon sin pedir OK, y se reportó qué se creó.
+- [ ] Se confirmó antes de crear sólo si el alcance era elástico, el ticket era ambiguo, o dos tickets se pisaban.
 - [ ] Si dos tickets se pisan, se avisó antes de arrancarlos en paralelo.
 - [ ] Cada agente se creó con nombre legible y quedó en el registro — con `worktree set --display-name` después del `create`, que no acepta ese flag.
 - [ ] El `--spec` le dijo a cada agente que su mundo es un solo worktree y que no toque ni razone sobre los demás.
