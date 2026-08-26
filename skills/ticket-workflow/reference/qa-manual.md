@@ -189,6 +189,10 @@ Después, avisar que se devuelve el turno:
 
 > QA cerrado, devuelvo el turno.
 
+**Sin conductor no hay turno que devolver**, pero el stack se baja igual: eso es
+lo único obligatorio de esta sección en ese modo. Que nadie esté esperando el
+turno no hace que los containers dejen de ocupar la máquina.
+
 **Si el gate 3 vuelve pidiendo cambios de código** —no "probá también este otro
 caso"—, se baja el stack y se devuelve el turno **ahí mismo**, antes de ponerse
 a corregir. Retenerlo mientras se re-implementa deja el torniquete cerrado media

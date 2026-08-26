@@ -679,10 +679,10 @@ config exista ahorra el onboarding, no los gates.
 - [ ] La rama se creó desde la base actualizada del remoto, con el patrón configurado, y como worktree de Orca (o se avisó el fallback).
 - [ ] Cada submódulo con rama propia quedó registrado en Orca (`repo add` + `worktree set --display-name "<TICKET> · front|back"`) y aparece en `worktree list`.
 - [ ] El ticket se movió a `In Progress` y la tarjeta de Orca a `in-progress` al crear la rama.
-- [ ] Se pidió turno de QA antes de levantar el stack, y se esperó a que lo concedieran.
+- [ ] Con conductor: se pidió turno de QA antes de levantar el stack y se esperó a que lo concedieran. Sin conductor: se midió la memoria disponible y el swap antes de levantar.
 - [ ] Se ejecutaron los casos de prueba en el navegador, con el usuario/rol que pedía el ticket, y se capturó una screenshot por caso del estado implementado.
 - [ ] El usuario dio el OK explícito del QA antes de commitear.
-- [ ] El stack se bajó y el turno se devolvió al resolverse el gate 3, verificando que los containers efectivamente bajaron.
+- [ ] El stack se bajó al resolverse el gate 3, verificando que los containers efectivamente bajaron — y, si había conductor, se le devolvió el turno.
 - [ ] Antes del commit se verificó que la rama estuviera al día con su base, y si no, se mergeó la base dentro de la rama de trabajo.
 - [ ] El commit se propuso y se confirmó explícitamente antes de ejecutarse.
 - [ ] No se ejecutó ningún `git push`: la rama quedó sin upstream a propósito y se reportó como lista para publicar, nombrándola explícitamente.
