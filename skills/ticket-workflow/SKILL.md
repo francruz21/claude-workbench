@@ -496,24 +496,27 @@ que funciona. El detalle operativo (comandos, login, capturas, qué hacer si
 algo falla) está en [`reference/qa-manual.md`](reference/qa-manual.md).
 
 El paso 8 **empieza pidiendo turno** y **termina bajando el stack**: un solo
-stack arriba en toda la máquina. Ver
-[`reference/qa-manual.md`](reference/qa-manual.md).
+stack arriba en toda la máquina.
 
 En resumen:
 
-1. Levantar la app local con el `qa.startCommand` del config, en background.
-2. Abrir el navegador embebido de Orca en `qa.url` y esperar que cargue.
-3. Loguearse con el usuario o rol que pida el ticket (paso 2). Los usuarios
+1. **Pedir turno de QA y esperar a que lo concedan** (sin conductor: medir
+   memoria disponible y swap antes de levantar nada).
+2. Levantar la app local con el `qa.startCommand` del config, en background.
+3. Abrir el navegador embebido de Orca en `qa.url` y esperar que cargue.
+4. Loguearse con el usuario o rol que pida el ticket (paso 2). Los usuarios
    salen de los seeds/fixtures del repo; si no hay ninguno usable, **pararse y
    pedirlo** en vez de inventar credenciales o dar el QA por hecho.
-4. Ejecutar cada caso de prueba anotado en el paso 2. Si el ticket no describe
+5. Ejecutar cada caso de prueba anotado en el paso 2. Si el ticket no describe
    casos, proponer los que se deducen del cambio y pedir confirmación antes de
    ejecutarlos.
-5. Capturar **una screenshot por caso**, del estado implementado, con un
+6. Capturar **una screenshot por caso**, del estado implementado, con un
    nombre que diga qué caso es. Nada de revertir código para fotografiar el
    estado anterior.
-6. Presentarle al usuario la lista de casos con su resultado y las capturas, y
+7. Presentarle al usuario la lista de casos con su resultado y las capturas, y
    **esperar su OK explícito**.
+8. **Con el gate 3 resuelto, bajar el stack, verificar que los containers
+   bajaron y devolver el turno.**
 
 **Este paso es el punto de control del flujo.** Sin OK del usuario no se
 commitea. Si un caso falla, volver al paso 7 y arreglarlo — no seguir con un
@@ -551,7 +554,9 @@ git log --oneline HEAD..origin/<rama-base>
   lógica que no es del ticket, es él quien decide.
 - **Si el merge trae cambios que afectan lo que se probó en el paso 8** (ej.
   toca los mismos archivos o la misma pantalla), avisarlo y re-correr los casos
-  afectados antes de commitear.
+  afectados antes de commitear, **pidiendo turno de QA de nuevo desde la
+  sección 0 de [`reference/qa-manual.md`](reference/qa-manual.md) y bajando el
+  stack al terminar**: el turno se devolvió al cerrarse el gate 3.
 
 ### 10. Commit — con confirmación
 

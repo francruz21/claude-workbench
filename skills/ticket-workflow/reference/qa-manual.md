@@ -135,8 +135,10 @@ Un caso bien planteado dice qué se hace, con quién, y qué se espera ver:
 Ejecutar todos los casos antes de mostrar resultados, salvo que uno falle de
 una forma que invalide los siguientes.
 
-**Si un caso falla:** volver al paso 7 del flujo y arreglarlo. No seguir con un
-caso en rojo "para no perder el avance", y no presentarlo como "falla menor" —
+**Si un caso falla:** volver al paso 7 del flujo y arreglarlo, **y bajar el
+stack devolviendo el turno antes de ponerse a corregir** — vale lo mismo que
+para un gate 3 que vuelve pidiendo cambios (sección 7). Se pide de nuevo cuando
+haya algo nuevo que probar. No seguir con un caso en rojo "para no perder el avance", y no presentarlo como "falla menor" —
 si el caso está en el ticket, el ticket no está resuelto.
 
 ## 5. Capturar una screenshot por caso

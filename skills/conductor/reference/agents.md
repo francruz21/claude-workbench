@@ -27,8 +27,10 @@ orca-ide orchestration task-list --json           # si falla: orquestación no h
 ls ~/.claude/skills/ticket-workflow/SKILL.md      # dependencia de este repositorio
 test -f ~/.claude/workbench/user.json             # config de usuario
 test -f .claude/workbench.project.json            # config de proyecto (wrapper)
-free -m                    # memoria disponible
-swapon --show              # swap en uso
+# memoria y swap: los mismos dos one-liners que usa la sección 0 de
+# `ticket-workflow/reference/qa-manual.md` — que las dos mitades midan igual
+free -m | awk '/^Mem:/ {print "disponible:", $7, "MB"}'
+swapon --show --noheadings --raw --bytes | awk '{u+=$4; t+=$3} END {if (t>0) printf "swap en uso: %.0f%%\n", 100*u/t}'
 docker ps -q | wc -l       # containers vivos
 ```
 
@@ -466,6 +468,9 @@ un mecanismo propio termina en un PR verde que nadie anuncia.
 Apenas se registra un PR, se arma **un monitor persistente por PR**, que emite
 una línea por transición y sigue vivo mientras el conductor hace otra cosa:
 
+Va en segundo plano, uno por PR; `$N` es el número de PR, `$SLUG` el
+`owner/repo` y `$TICKET` el ID del ticket.
+
 ```bash
 prev=""
 while true; do
@@ -547,6 +552,12 @@ legible al crear:**
 orca-ide worktree list --json   # displayName, linkedLinearIssue, branch, path, linkedPR
 orca-ide terminal list --json   # worktreeId, handle, connected, orphaned, lastOutputAt
 ```
+
+**`lastOutputAt` es informativo y no decide nada.** Se descartó explícitamente
+como señal de liveness: mide cuándo el hijo escribió por última vez, no si hay
+otro conductor vivo del otro lado. Un hijo callado media hora esperando turno de
+QA es normal, y un hijo que escupe logs no prueba que nadie más lo esté
+conduciendo. Para eso están `connected` y `orphaned`.
 
 Un worktree con `linkedLinearIssue: "<TICKET-ID>"` y
 `displayName: "<TICKET-ID> · <slug-corto>"` **es** la entrada del registro. Lo

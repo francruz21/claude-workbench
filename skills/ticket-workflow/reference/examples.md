@@ -135,8 +135,13 @@ captura todavía — esas salen del QA, sobre el resultado terminado.
 
 ## Turno 6 — QA manual en el navegador (gate 3)
 
-Claude levanta `pnpm dev` en background, espera que el puerto responda, y abre
-el navegador embebido de Orca en `http://localhost:3000`. Se loguea con el
+Acá no hay conductor a quien pedirle turno, así que antes de levantar nada
+Claude mide la máquina:
+
+> **Claude:** 6,4 GB disponibles y swap al 12% — hay margen, levanto la app.
+
+Recién ahí levanta `pnpm dev` en background, espera que el puerto responda, y
+abre el navegador embebido de Orca en `http://localhost:3000`. Se loguea con el
 usuario de los seeds del repo, navega hasta la pantalla del modal, lo abre, y
 captura. Después prueba el hover y captura de nuevo.
 
@@ -152,6 +157,17 @@ captura. Después prueba el hover y captura de nuevo.
 > de commitear?
 
 > **Usuario:** dale, está bien
+
+Con el gate 3 resuelto, Claude cierra el turno: baja el stack con el
+`qa.stopCommand` del config y verifica que no quedó ningún container arriba.
+
+```bash
+<qa.stopCommand del config>
+docker ps --format '{{.Names}}' | grep -F "<slug-del-worktree>" || echo "stack abajo"
+```
+
+> **Claude:** QA cerrado, el stack quedó abajo (sin containers del ticket). Sin
+> conductor no hay turno que devolver, pero la máquina queda libre igual.
 
 ## Turno 7 — sync con la base y commit (gate 4)
 

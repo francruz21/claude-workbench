@@ -1,6 +1,6 @@
 ---
 name: conductor
-description: Use cuando el usuario pega uno o más links o IDs de ticket, o dice "trabajá este ticket" — también si es uno solo. Es el único punto de entrada de un ticket: el conductor no lo trabaja, crea sin pedir OK un worktree con su propio agente hijo por ticket y lo pone a trabajarlo con ticket-workflow, le pone un nombre legible y lo reporta. Es también el único interlocutor del usuario: los hijos no le hablan nunca. Resuelve él los gates que tienen una respuesta recomendada — juzgando con la estructura y la arquitectura del código y pasando `code-review` al diff — y solo escala lo delicado. Anuncia en Discord cada ticket en cuanto sus PRs pasan el gate, y cierra el worktree en cuanto la PR quedó publicada y anunciada, sin esperar el merge. NO usar si esta sesión ya es un hijo despachado por un conductor, ni para anunciar PRs que no pasaron por este flujo.
+description: Use cuando el usuario pega uno o más links o IDs de ticket, o dice "trabajá este ticket" — también si es uno solo. Es el único punto de entrada de un ticket: el conductor no lo trabaja, crea sin pedir OK un worktree con su propio agente hijo por ticket y lo pone a trabajarlo con ticket-workflow, le pone un nombre legible y lo reporta. Es también el único interlocutor del usuario: los hijos no le hablan nunca. Resuelve él los gates que tienen una respuesta recomendada — juzgando con la estructura y la arquitectura del código y pasando `code-review` al diff — y solo escala lo delicado. Al arrancar reconcilia lo que ya existe en vez de duplicar hijos. Anuncia en Discord cada ticket en cuanto sus PRs pasan el gate, y cierra el worktree —automáticamente y sin pedir OK, con sus imágenes y volúmenes— en cuanto la PR quedó publicada y anunciada, sin esperar el merge. NO usar si esta sesión ya es un hijo despachado por un conductor, ni para anunciar PRs que no pasaron por este flujo.
 ---
 
 # Conductor
@@ -16,7 +16,8 @@ quedó anunciado.
 
 **Un ticket también es una tanda.** Que sea uno solo no habilita a trabajarlo
 acá: entra por el mismo camino que diez, con su worktree y su hijo. La topología
-no cambia con el volumen, y por eso es predecible.
+no cambia con el volumen —el consumo sí, y por eso están la sexta precondición y
+el torniquete de QA.
 
 El conductor **no hace el trabajo del ticket** y **no agrega autonomía**. Lo que
 agrega es paralelismo y orden.
@@ -141,13 +142,16 @@ relevaron.
 Reglas para una sesión que arranca al lado de otra:
 
 - **Solo maneja los agentes que creó ella.** No relevea gates, no anuncia y no
-  borra worktrees de agentes que no despachó. Dos padres relevando el mismo gate
-  le hacen contestar dos veces al usuario; dos padres anunciando el mismo PR
-  mandan dos pings que no se deshacen.
-- **El contexto se pide, no se asume.** Si el usuario quiere que esta sesión se
-  haga cargo de una tanda que arrancó en otra, lo dice. Recién ahí se reconstruye
-  el estado **leyendo Orca y el tracker** (`worktree list`, el estado de las PRs,
-  la label de anunciado), nunca de memoria ni adivinando qué hizo la otra sesión.
+  borra worktrees de agentes que no despachó ni adoptó. Dos padres relevando el
+  mismo gate le hacen contestar dos veces al usuario; dos padres anunciando el
+  mismo PR mandan dos pings que no se deshacen.
+- **El contexto de una tanda con hijos vivos se pide, no se asume.** Si el
+  usuario quiere que esta sesión se haga cargo de una tanda que arrancó en otra y
+  todavía tiene hijos vivos, lo dice. Recién ahí se reconstruye el estado
+  **leyendo Orca y el tracker** (`worktree list`, el estado de las PRs, la label
+  de anunciado), nunca de memoria ni adivinando qué hizo la otra sesión. Si están
+  todos muertos no hay a quién pisar, y aplica el bullet de abajo: se adopta sin
+  preguntar.
 - **Una sesión muerta no es una sesión hermana.** La regla de arriba existe para
   que dos conductores **vivos** no le contesten el mismo gate al mismo hijo ni
   manden dos anuncios. `connected` y `orphaned` alcanzan para distinguir los dos
@@ -242,9 +246,14 @@ corriendo.
 Un hijo pide turno antes de levantar nada (paso 8 de `ticket-workflow`). El
 conductor lo concede **de a uno**:
 
-- **Torniquete libre** → se concede, y ese ticket queda en `qaTurn: "held"`.
+- **Torniquete libre en el registro y `docker ps` sin containers de ningún
+  ticket** → se concede, y ese ticket queda en `qaTurn: "held"`.
 - **Torniquete ocupado** → el pedido queda en `qaTurn: "queued"` y **su `ask` no
   se responde** hasta que se libera. Se conceden en el orden en que llegaron.
+- **Ocupado por un stack que no está en tu registro** (el hijo de otra sesión) →
+  el pedido queda en `queued` y se re-chequea `docker ps` en cada ventana de
+  `check --wait`. Se reporta al usuario en una línea, porque esa espera no la
+  destraba ningún hijo tuyo.
 - **Llega "devuelvo el turno"** → vuelve a `null` y se concede el primero de la
   cola.
 

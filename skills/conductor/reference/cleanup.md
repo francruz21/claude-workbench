@@ -1,8 +1,11 @@
 # Limpieza — cerrar al publicar y anunciar
 
 Detalle operativo de la fase 6. El principio que ordena todo este archivo: **el
-riesgo no es simétrico.** Un worktree de más no cuesta nada; un worktree borrado
-de menos cuesta el trabajo que tenía adentro.
+riesgo no es simétrico, pero ningún lado es gratis.** Un worktree borrado de
+menos cuesta el trabajo que tenía adentro; uno de más cuesta entre 5 y 6,5 GB de
+imágenes y un ambiente local bloqueado, y eso acumulado es lo que produjo la
+limpieza automática de abajo. Por eso las tres verificaciones son obligatorias
+**y** la confirmación se eliminó: lo que decide es la evidencia, no la prudencia.
 
 ## Detectar
 
@@ -93,6 +96,9 @@ Con las tres en verde, se borra y se reporta. Y se borra **todo lo del ticket**,
 no solo el worktree:
 
 ```bash
+# 0. ¿Quedó algún container del ticket, aunque esté parado?
+docker ps -a --format '{{.Names}}' | grep -F "<slug-del-worktree>"
+
 # 1. El worktree
 orca-ide worktree rm --worktree id:<worktreeId> --force --json
 
@@ -108,6 +114,15 @@ docker volume ls --format '{{.Name}}' \
 ```
 
 Y sacar el ticket del registro de la sesión.
+
+**El paso 0 no es de más.** `docker image rm` y `docker volume rm` **fallan**
+mientras un container —aunque esté parado— referencie esa imagen o ese volumen,
+y eso pasa cada vez que el ticket quedó abandonado tras un crash o el
+`stopCommand` falló en silencio. Si el `grep` devuelve algo, correr el
+`qa.stopCommand` del config (o `docker rm` sobre esos nombres) antes de seguir.
+**Si igual no bajan, no borrar nada** y reportar qué containers quedaron, con su
+nombre: borrar el worktree dejando el stack arriba deja las imágenes y los
+volúmenes sin dueño y sin forma de anclarlos al slug.
 
 **Por qué las imágenes y no solo el worktree.** El worktree son unos cientos de
 MB de código; el par de imágenes que ese mismo ticket construyó pesa entre 5 y
@@ -147,8 +162,9 @@ orca-ide worktree create --repo id:<wrapperRepoId> --name <slug> \
 ```
 
 La rama de trabajo ya existe en el remoto, así que se usa como base y no hay que
-cortar nada nuevo. Los cambios del review se commitean y pushean sobre ella, y la
-PR abierta los recoge sola.
+cortar nada nuevo. Los cambios del review se commitean sobre ella y la rama
+queda lista para publicar, como siempre: **el push lo hace el humano**, y la PR
+abierta los recoge cuando llegan.
 
 Si el ticket vuelve a la cola, **el anuncio no se repite**: la label de
 `notifiedLabel` sigue puesta y es lo que evita anunciar dos veces el mismo
