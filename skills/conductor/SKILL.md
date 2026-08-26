@@ -82,6 +82,13 @@ parece necesario, la respuesta es preguntarle al usuario, no hacerlo.
 - **No elige el alcance de un anuncio.** Un pedido elástico ("mis PRs", "los
   últimos") es una pregunta sin hacer, no una licencia para incluir todo lo que
   matchee.
+- **No crea tickets.** Ni él ni los hijos: ni sub-issues, ni follow-ups, ni un
+  ticket para el bug que apareció de paso. Si un hijo reporta trabajo fuera del
+  alcance, eso **sube como reporte** y el usuario decide si se abre algo. Un
+  ticket que nadie pidió entra en la planificación de alguien que no está en esta
+  sesión.
+- **No hace triage**: no reasigna, no cambia prioridad, estimación ni labels de
+  ningún ticket.
 - **No borra un worktree sin confirmación**, ni con cambios sin commitear o
   commits sin pushear.
 - **No mata un agente porque todavía no contestó.** Una tarea de código tarda
@@ -352,7 +359,8 @@ Si algo no está limpio, no borrar y decir qué quedó y dónde.
 - [ ] El `--spec` le dijo a cada agente que su mundo es un solo worktree y que no toque ni razone sobre los demás.
 - [ ] El `--spec` del task le dijo al agente que use `ticket-workflow`, que pregunte los gates con `ask`, que registre en Orca los submódulos que toca, y que deje rastro en el tracker.
 - [ ] Cada ticket de la tanda quedó en `In Progress` al cortarse su rama, no en `Todo` con una rama viva.
-- [ ] Cada agente dejó su comentario en el ticket con las capturas **embebidas**, sin esperar el push.
+- [ ] Cada agente dejó su comentario en el ticket con las capturas **embebidas**, sin esperar el push, y escrito en lenguaje de negocio.
+- [ ] No se creó ningún ticket: lo que apareció fuera del alcance subió como reporte.
 - [ ] Las ramas de front y de back se ven en `orca-ide worktree list`, no solo la del wrapper.
 - [ ] Ningún gate se resolvió sin haber leído el diff del hijo y pasarle `code-review`.
 - [ ] Cada gate que el conductor resolvió solo se reportó en una línea, con el criterio.

@@ -77,6 +77,27 @@ Reglas de forma:
   devuelve algo, es parte del mismo gate y todavía no está aprobado. Si no estás
   de acuerdo, contestá con el argumento — pero no sigas de largo.
 
+## Lo que no se toca en el tracker
+
+El ticket que te dieron se comenta y se mueve de estado. **Nada más**, y nada
+fuera de él.
+
+- **No se crean tickets.** Ni sub-issues, ni follow-ups, ni un ticket "para lo
+  que quedó pendiente", ni uno para el bug que apareció de paso. Aunque el
+  hallazgo sea real y valga la pena, **se pide permiso primero**: se reporta qué
+  se encontró y se espera. Un ticket que nadie pidió aparece en el board del
+  equipo, entra en la planificación de alguien, y el que lo creó no está para
+  explicarlo.
+- **No se reasigna, no se cambia prioridad, estimación ni labels.** Eso es
+  triage, y el triage lo hace el equipo.
+- **Los dos únicos cambios de estado son los del propio ticket**: a `In Progress`
+  al cortar la rama, y a `In Review` al abrir la PR.
+- **No se tocan otros tickets**, ni para comentar, ni para linkear, ni para
+  cerrarlos por duplicado.
+
+Si el trabajo desborda el alcance del ticket, eso es un gate: se reporta y se
+pregunta — nunca se abre trabajo nuevo por cuenta propia.
+
 ## Requiere
 
 **Capabilities**
@@ -552,19 +573,30 @@ ver el paso 13 para cómo se detecta eso.
 
 ### 12. Comentario en el ticket, con capturas embebidas — automático
 
-Inmediatamente después de dejar la rama lista para publicar (paso 11),
-publicar un comentario en el ticket. No pedir confirmación adicional: ya
-quedó autorizado al confirmar el commit del paso 10 — no depende de que la
-rama ya esté publicada, porque eso ahora lo controla el humano y puede tardar
-horas o días.
+**Cuándo: después del commit, sin esperar el push.** Las capturas ya existen —
+se sacaron en el QA del paso 8, antes de commitear — y el comentario sale
+inmediatamente después de dejar la rama lista para publicar (paso 11). No se pide
+confirmación adicional: quedó autorizado al confirmar el commit del paso 10. Y no
+se espera a que la rama esté publicada, porque eso lo controla el humano y puede
+tardar horas o días.
 
-**Formato del comentario — 3 a 6 líneas.** Lo lee gente de negocio y gente
-técnica, así que:
+**Formato del comentario — 3 a 6 líneas, mitad negocio.** Lo lee gente que no
+toca el código y lo lee en el board, así que el registro es el de negocio y lo
+técnico es la excepción:
 
-- Arranca por **qué cambió para el usuario**, en lenguaje de negocio.
-- Cierra con **una línea** de dónde se tocó (archivo, servicio o módulo), sin
-  pegar código ni explicar la implementación.
+- **Arranca por qué cambió para el usuario**, en lenguaje de negocio: qué se ve
+  distinto, qué se puede hacer ahora que antes no, o qué dejó de fallar.
+- **Una sola línea técnica**, al final, de dónde se tocó (archivo, servicio o
+  módulo). Sin pegar código ni explicar la implementación.
+- **En la parte de negocio no van** nombres de clases, funciones, archivos,
+  tablas ni endpoints, ni jerga del oficio (*hook*, *middleware*, *override*,
+  *race condition*, *refactor*, *deploy*), ni números de commit o de PR. Si un
+  término técnico es imprescindible, se traduce a lo que el usuario ve.
 - Nada de relatos del proceso ("primero investigué...") ni de listas de commits.
+
+**La prueba de lectura:** si alguien que no programa no puede decir, leyendo el
+comentario, qué cambió y qué mirar en las capturas, está mal escrito — por más
+correcto que sea técnicamente.
 
 **Las capturas van embebidas, no adjuntas.** Un adjunto queda como link al pie;
 una imagen embebida se ve inline en el comentario. Una imagen por caso de
@@ -648,7 +680,9 @@ config exista ahorra el onboarding, no los gates.
 - [ ] Antes del commit se verificó que la rama estuviera al día con su base, y si no, se mergeó la base dentro de la rama de trabajo.
 - [ ] El commit se propuso y se confirmó explícitamente antes de ejecutarse.
 - [ ] No se ejecutó ningún `git push`: la rama quedó sin upstream a propósito y se reportó como lista para publicar, nombrándola explícitamente.
-- [ ] El comentario del ticket se publicó tras dejar la rama lista para publicar, en 3-6 líneas, con las capturas embebidas inline (no como adjuntos al pie).
+- [ ] El comentario del ticket se publicó tras el commit y sin esperar el push, en 3-6 líneas, con las capturas embebidas inline (no como adjuntos al pie).
+- [ ] El comentario arranca en lenguaje de negocio, con una sola línea técnica y sin jerga ni identificadores de código en la parte de negocio.
+- [ ] No se creó ningún ticket, sub-issue ni follow-up; lo que apareció fuera del alcance se reportó y se pidió permiso.
 - [ ] Antes de abrir la PR se verificó que la rama ya tuviera upstream (`@{u}`); si no lo tenía, se esperó sin pushear ni volver a preguntar.
 - [ ] La PR apunta a la rama de nacimiento y no a `main`, y quedó con reviewer asignado en GitHub.
 - [ ] El ticket quedó en `In Review` y la tarjeta de Orca en `in-review`.
@@ -710,6 +744,13 @@ el comentario final publicado en el ticket con las capturas embebidas.
   del repo — pasar siempre `--base` con la rama de nacimiento.
 - **Cambiar el assignee del ticket al reviewer** — el reviewer se asigna en la
   PR de GitHub; el ticket sigue asignado a quien lo trabajó.
+- **Abrir un ticket para lo que apareció de paso** — el hallazgo puede ser
+  válido y el ticket igual está de más: entró al board de alguien sin que nadie
+  lo pidiera. Se reporta y se espera.
+- **Escribir todo el comentario en registro técnico** — si la primera línea ya
+  dice "se corrigió el override de estilos", quien reportó el bug no sabe si
+  puede volver a probar. Arranca por lo que ve distinto el usuario; la línea
+  técnica es una, y va al final.
 - **No registrar los submódulos en Orca** — el trabajo existe en disco, con
   commits, y el usuario ve solo la tarjeta del wrapper: ni front ni back, y
   ninguna forma de enterarse de que hay algo ahí. Dar el trabajo por visible
