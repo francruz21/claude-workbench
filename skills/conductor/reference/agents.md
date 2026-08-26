@@ -565,7 +565,7 @@ Tres salidas, y **ninguna es "crear de nuevo"**:
 
 | Estado | Qué se hace |
 |---|---|
-| Worktree existe, hijo **vivo** (`connected: true`, `orphaned: false`) | **Reattach, pero recién después de confirmarlo** — un hijo vivo puede estar conducido por otra sesión. Ver *Cuándo adopta sin preguntar, y cuándo pregunta*. Con el OK: re-resolver el handle por `worktreeId` y seguir con `reply`. No se crea nada. |
+| Worktree existe, hijo **vivo** (`connected: true`, `orphaned: false`) | **Reattach, pero recién después de confirmarlo** — un hijo vivo puede estar conducido por otra sesión. Ver *Cada sesión es su propia tanda* en la skill. Con el OK: re-resolver el handle por `worktreeId` y seguir con `reply`. No se crea nada. |
 | Worktree existe, hijo **muerto** (`orphaned: true` o sin terminal) | **Revivir un agente en ese worktree** con `terminal create`. Nunca `worktree create`. |
 | No hay worktree para ese ticket | Recién ahí, el flujo normal de *Crear y nombrar un agente*. |
 
