@@ -94,11 +94,15 @@ el nombre del repo (`repo-front`), y el `· front` / `· back` lo pone un
 El conductor mantiene un registro de la sesión:
 
 ```
-ticket → { name, worktreeId, handle, taskId, dispatchId }
+ticket → { name, worktreeId, handle, taskId, dispatchId, qaTurn }
 ```
 
 `name` y `worktreeId` son estables. `handle` es routing y puede cambiar si el
 pane se reinicia.
+
+`qaTurn` es `"held"`, `"queued"` o `null`, y **solo uno puede estar en `"held"`
+en toda la tanda**. Es el torniquete del stack: ver *El torniquete de QA* en la
+skill.
 
 ### Agent-first, no dos pasos
 
@@ -222,7 +226,7 @@ le habla al usuario. La asimetría es a propósito.
 
 ### El `--spec` del task
 
-Tiene que decirle al agente ocho cosas, explícitas:
+Tiene que decirle al agente nueve cosas, explícitas:
 
 1. **El ticket** — ID, link, y lo que se leyó de él (título, labels de ambiente
    y de tipo, casos de prueba si los describe).
@@ -256,6 +260,20 @@ Tiene que decirle al agente ocho cosas, explícitas:
    que el humano la publique. Recién cuando detecta upstream — ver el paso 13
    de `ticket-workflow` — sigue con la PR. Sin esta línea el agente asume que
    publicar es parte de terminar la tarea, y pushea igual.
+9. **Que no delega en ningún otro agente.** Ni despachando por Orca, ni lanzando
+   subagentes dentro de su propia sesión — ni para el QA, ni para explorar
+   código, ni para revisar su diff. Va textual, porque el hijo hereda las skills
+   globales del usuario y algunas lo empujan justo para el otro lado:
+
+   > No delegás en otro agente. Todo lo de este ticket lo hacés vos, en esta
+   > sesión. Si una skill global te sugiere paralelizar con subagentes, en este
+   > flujo no aplica: cada agente extra levanta su propio contexto y puede
+   > levantar su propio stack, y esta máquina tiene otros worktrees corriendo
+   > que vos no ves.
+
+   La última frase carga el peso: el hijo tiene prohibido mirar a sus hermanos,
+   así que **no tiene forma de saber que la máquina está cargada**. Si no se le
+   dice, el cálculo que hace siempre es "estoy solo, puedo paralelizar".
 
 ## El rastro en el tracker
 
@@ -317,6 +335,9 @@ Ventanas rodantes de 15 minutos. Reglas:
   vaya a destrabarlo solo, así que ese silencio puede durar horas o días sin
   ser señal de nada roto — el criterio de arriba (terminal vivo en
   `terminal list`) sigue siendo el único que importa.
+- **Un hijo esperando turno de QA tampoco está estancado.** Es el conductor el
+  que todavía no le contestó, así que su silencio es literalmente lo que el
+  torniquete pidió que hiciera.
 
 Si una ventana vuelve vacía y hay dudas de si el agente avanza, mirar sin
 interrumpir:

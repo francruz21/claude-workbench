@@ -212,6 +212,40 @@ del conductor si la tiene, y **por qué no la tomó solo**:
 > compartida. Es un contrato que consume el resto del sistema, así que no lo
 > decido: ¿va así, o lo resolvemos dentro del módulo?
 
+## El torniquete de QA
+
+**Varios hijos en paralelo, un solo stack levantado.** El paralelismo que importa
+es el del trabajo —leer, implementar, commitear, esperar el CI— y ese no consume
+containers. Lo único que se serializa es el minuto en que un hijo necesita la app
+corriendo.
+
+Un hijo pide turno antes de levantar nada (paso 8 de `ticket-workflow`). El
+conductor lo concede **de a uno**:
+
+- **Torniquete libre** → se concede, y ese ticket queda en `qaTurn: "held"`.
+- **Torniquete ocupado** → el pedido queda en `qaTurn: "queued"` y **su `ask` no
+  se responde** hasta que se libera. Se conceden en el orden en que llegaron.
+- **Llega "devuelvo el turno"** → vuelve a `null` y se concede el primero de la
+  cola.
+
+Se reporta en una línea, como cualquier otra decisión:
+
+> **TCK-257 · otro-slug** espera turno de QA; lo tiene **TCK-262 · slug-corto**.
+
+**Un hijo esperando turno no es un hijo colgado.** Es el motivo legítimo de
+silencio más largo que hay en este flujo, y no habilita a cerrarlo ni a
+reiniciarlo — vale la misma regla de siempre: solo está muerto si su terminal
+desapareció de `terminal list`.
+
+**Dos redes de seguridad, porque un turno huérfano cuelga la tanda entera:**
+
+- Si quien tiene el turno desaparece de `orca-ide terminal list`, se libera.
+- Si manda `worker_done` sin devolverlo, se libera.
+
+En los dos casos hay que **verificar que sus containers bajaron** antes de
+conceder el siguiente: un turno liberado sobre un stack que quedó arriba pone dos
+stacks en la máquina, que es justo lo que el torniquete existe para evitar.
+
 ## Pasos detallados
 
 ### 0. Precondiciones
@@ -378,6 +412,9 @@ Si algo no está limpio, no borrar y decir qué quedó y dónde.
 - [ ] Se verificó que la mención quedó resuelta antes de enviar.
 - [ ] La label de anunciado se puso **después** del envío exitoso.
 - [ ] Antes de borrar, las tres verificaciones pasaron en el wrapper y en cada submódulo.
+- [ ] Nunca hubo dos stacks arriba a la vez: el turno de QA se concedió de a uno.
+- [ ] Antes de conceder un turno liberado por red de seguridad, se verificó que los containers del anterior bajaron.
+- [ ] El `--spec` le dijo a cada agente que no delega en ningún otro agente, ni siquiera para el QA.
 - [ ] Nada se pusheó, mergeó ni aprobó desde el conductor.
 - [ ] No se relevaron gates, ni se anunció, ni se borraron worktrees de agentes que esta sesión no despachó.
 
@@ -463,6 +500,10 @@ Si algo no está limpio, no borrar y decir qué quedó y dónde.
   pie y nadie lo abre.
 - **Esperar el push para comentar la evidencia** — en este flujo el push lo corre
   el usuario a mano y puede tardar días; la evidencia va cuando existe.
+- **Conceder un turno sin haber verificado que el stack anterior bajó** — deja
+  dos stacks arriba y el torniquete deja de servir para lo único que existe.
+- **Tratar como colgado a un hijo que espera turno** — es el conductor quien no
+  le contestó todavía. Cerrarlo tira trabajo por un silencio que él mismo pidió.
 
 ## Buenas prácticas
 
