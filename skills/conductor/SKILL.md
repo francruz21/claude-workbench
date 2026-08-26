@@ -1,6 +1,6 @@
 ---
 name: conductor
-description: Use cuando el usuario pega uno o más links o IDs de ticket, o dice "trabajá este ticket" — también si es uno solo. Es el único punto de entrada de un ticket: el conductor no lo trabaja, crea sin pedir OK un worktree con su propio agente hijo por ticket y lo pone a trabajarlo con ticket-workflow, le pone un nombre legible y lo reporta. Después relevea al usuario los gates de cada hijo, anuncia en Discord cada ticket en cuanto sus PRs pasan el gate, y cierra el worktree en cuanto la PR quedó publicada y anunciada, sin esperar el merge. NO usar si esta sesión ya es un hijo despachado por un conductor, ni para anunciar PRs que no pasaron por este flujo.
+description: Use cuando el usuario pega uno o más links o IDs de ticket, o dice "trabajá este ticket" — también si es uno solo. Es el único punto de entrada de un ticket: el conductor no lo trabaja, crea sin pedir OK un worktree con su propio agente hijo por ticket y lo pone a trabajarlo con ticket-workflow, le pone un nombre legible y lo reporta. Es también el único interlocutor del usuario: los hijos no le hablan nunca. Resuelve él los gates que tienen una respuesta recomendada — juzgando con la estructura y la arquitectura del código y pasando `code-review` al diff — y solo escala lo delicado. Anuncia en Discord cada ticket en cuanto sus PRs pasan el gate, y cierra el worktree en cuanto la PR quedó publicada y anunciada, sin esperar el merge. NO usar si esta sesión ya es un hijo despachado por un conductor, ni para anunciar PRs que no pasaron por este flujo.
 ---
 
 # Conductor
@@ -37,6 +37,13 @@ agrega es paralelismo y orden.
 - `project.relayGates` — política de relay.
 - `project.orca.wrapperRepoId` — el repo wrapper en Orca.
 
+**Skills**
+- `ticket-workflow` — es la que trabaja cada ticket. Sin ella no se improvisa el
+  flujo.
+- `code-review` — la que el conductor le aplica al diff de cada hijo antes de
+  resolver un gate por su cuenta. Sin leer el diff no hay decisión informada que
+  tomar.
+
 Ante un campo ausente o una capability que falta, seguir `core/resolve.md`.
 No completar en silencio.
 
@@ -54,9 +61,18 @@ parece necesario, la respuesta es preguntarle al usuario, no hacerlo.
   lista para publicar (sin upstream, a propósito) y esperan a que el humano
   la publique. Recién con upstream ya creado el hijo abre la PR — ver los
   pasos 11 y 13 de `ticket-workflow`.
-- **No responde gates en nombre del usuario.** Los cinco gates se relevean. Con
-  `relayGates: "judgment-only"` responde los dos derivables de los labels, y eso
-  es una concesión configurada, no el default.
+- **No decide lo delicado.** Resuelve los gates que tienen una respuesta
+  recomendada y defendible; lo que toca arquitectura, contratos compartidos,
+  permisos, infra, o lo irreversible, sube al usuario. Ver *Qué decide el
+  conductor, y qué te pregunta*.
+- **No resuelve un gate sin haber leído el diff.** Decidir "la recomendada" sin
+  mirar lo que el hijo escribió es firmar en blanco, y el usuario queda sin
+  nadie que haya revisado nada.
+- **No esconde lo que decidió.** Cada gate que resolvió solo se reporta en una
+  línea. Una decisión que el usuario no vio es una decisión que no puede
+  corregir.
+- **No arregla el código del hijo.** Lo que `code-review` encuentra vuelve al
+  hijo con `reply`; el conductor no edita el worktree de nadie.
 - **No anuncia un ticket a medias.** Si el back está verde y el front todavía
   corre, espera. Media notificación manda al revisor a un PR que depende de otro
   que no puede mirar.
@@ -90,6 +106,23 @@ parece necesario, la respuesta es preguntarle al usuario, no hacerlo.
   que sacar la descripción de cada línea.
 - El usuario pide "leeme estos tickets" sin más → leerlos y parar.
 
+## El usuario habla con el padre, y con nadie más
+
+El usuario **nunca tiene que hablarle a un hijo**. No es una preferencia de
+estilo: es lo que hace que la tanda se pueda seguir desde un solo lugar.
+
+- **Todo lo que el usuario necesita ver, se lo reporta el conductor**: qué se
+  creó, qué está haciendo cada hijo, qué gates se resolvieron y con qué criterio,
+  qué subió a decisión, qué terminó y qué quedó.
+- **Todo lo que un hijo necesita, se lo da el conductor**: el `--spec` al
+  arrancar y los `reply` después. Un hijo bloqueado esperando algo que el
+  conductor no le mandó es un error del conductor, no del hijo.
+- **Un hijo que terminó y no se reportó es trabajo invisible.** El usuario no
+  abre el pane de cada agente para enterarse.
+- Si el usuario igual le escribe a un hijo por el pane de Orca, el aislamiento
+  sigue valiendo: el hijo razona sobre su worktree y nada más. Pero el flujo no
+  depende de que eso pase.
+
 ## Cada sesión es su propia tanda
 
 El usuario abre terminales en paralelo, y **una sesión nueva no es este
@@ -109,12 +142,75 @@ Reglas para una sesión que arranca al lado de otra:
 - **Que exista un worktree en Orca no significa que sea tuyo.** Es la señal de
   que hay trabajo vivo, y con eso alcanza para no pisarlo.
 
+## Qué decide el conductor, y qué te pregunta
+
+El default es `relayGates: "delicate-only"`. El conductor **resuelve el gate
+cuando hay una respuesta recomendada que puede defender en una línea**, y escala
+solo lo delicado. No es autonomía: es sacar al usuario del camino de las
+decisiones que ya venían tomadas por el código, el config o el ticket.
+
+**Antes de resolver cualquier gate, el conductor lee el diff del hijo** — `git -C
+<worktree> diff` y `diff --stat` en el wrapper y en cada submódulo — y le aplica
+`code-review`. Leer el diff de un hijo no es trabajar el ticket: es revisarlo. Lo
+que encuentre vuelve **al hijo** con `reply`, nunca se arregla desde acá.
+
+### Lo resuelve el conductor
+
+- **Tipo de rama y rama base** cuando salen de las labels y del config.
+- **El cráneo** que sigue los patrones que ya están en el código, se queda en los
+  archivos del alcance del ticket, no agrega dependencias y no cambia contratos.
+- **El QA** con todos los casos del ticket ejercitados, con el rol que el ticket
+  pedía, una captura por caso, y ninguno en rojo.
+- **El commit** cuando el QA pasó y el mensaje sigue la convención.
+- **La PR** cuando la rama ya tiene upstream (la publicó el humano), apunta a la
+  rama de nacimiento, y el reviewer sale del config.
+
+### Te pregunta
+
+- **Arquitectura**: una dependencia nueva, un patrón que no existe en el código,
+  algo que cambia de capa, o un cambio que sienta precedente para lo que venga.
+- **Contratos compartidos**: endpoint, DTO, schema de DB, migración, evento, tipo
+  público. Los consume gente que no está en esta tanda.
+- **Permisos, auth, secretos, infra o deploy** — el radio de daño no termina en
+  el worktree.
+- **Algo irreversible o fuera del worktree**: una DB compartida, ramas remotas,
+  ambientes publicados.
+- **El alcance se desborda**: el fix pide cambiar comportamiento que el ticket no
+  pidió, o tocar un repo que el ticket no nombra.
+- **Dos caminos viables sin ganador claro.** Una recomendación que no se puede
+  defender en una línea no es una recomendación: es una preferencia, y esa la
+  elige el usuario.
+- **La evidencia contradice el plan**: un caso de QA en rojo, tests que ya
+  estaban rotos, o el cambio empeora otra cosa.
+- **`code-review` encontró algo real y el hijo no lo arregló** después del
+  `reply` — ahí sube, con el hallazgo y la respuesta del hijo.
+- **No hay señal para la rama base**: sin label de ambiente, o con `draft` /
+  `design`.
+
+Ante duda entre resolver y preguntar, **se pregunta**. El costo de preguntar es
+un mensaje; el de decidir mal algo delicado es rehacer trabajo ajeno.
+
+### Cómo se reporta cada caso
+
+Lo que **resolvió**, en una línea, junto al resto del avance:
+
+> **TCK-262 · slug-corto**: tipo de rama `fix` (label `Bug`) y cráneo aprobado —
+> toca solo el componente del ticket, sigue el patrón de los hermanos, sin
+> dependencias nuevas.
+
+Lo que **sube**, de a uno, con el nombre del agente adelante, la recomendación
+del conductor si la tiene, y **por qué no la tomó solo**:
+
+> **TCK-257 · otro-slug** propone resolverlo agregando una columna a la tabla
+> compartida. Es un contrato que consume el resto del sistema, así que no lo
+> decido: ¿va así, o lo resolvemos dentro del módulo?
+
 ## Pasos detallados
 
 ### 0. Precondiciones
 
-Las cuatro, antes de crear nada: Orca corriendo, orquestación habilitada,
-`ticket-workflow` instalada, config presente. Si una falla, parar y decir cuál —
+Las cinco, antes de crear nada: Orca corriendo, orquestación habilitada,
+`ticket-workflow` instalada, config de usuario y config de proyecto presentes. Si una falla, parar y decir cuál —
 ver [`reference/agents.md`](reference/agents.md#precondiciones) para los
 comandos y los mensajes exactos.
 
@@ -189,16 +285,23 @@ front y back quedan invisibles. Ver
 
 Al crear cada uno, decir qué se creó y con qué nombre.
 
-### 4. Supervisión — relevo
+### 4. Supervisión — resolver o escalar
 
 Ventanas rodantes de `check --wait --types worker_done,escalation,decision_gate`
 con `--timeout-ms 900000`. Ver
 [`reference/agents.md`](reference/agents.md#supervisar-sin-matar-agentes).
 
-Cuando llega un gate, presentarlo **con el nombre del agente adelante**, esperar
-la respuesta del usuario, y devolvérsela con `reply`. **De a uno**, en el orden
-en que llegaron — ver
-[`reference/agents.md`](reference/agents.md#relevar-un-gate).
+Cuando llega un gate: leer el diff del hijo, pasarle `code-review`, y aplicar el
+test de *Qué decide el conductor, y qué te pregunta*.
+
+- **Resoluble** → responder con `reply` y reportarlo en una línea.
+- **Delicado** → subirlo al usuario, esperar, y devolver su respuesta con
+  `reply`. **De a uno**, en el orden en que llegaron.
+- **Hallazgo de review** → vuelve al hijo con `reply`, no al usuario.
+
+Ver [`reference/agents.md`](reference/agents.md#resolver-o-escalar-un-gate).
+
+Una `escalation` no es un gate: es un hijo bloqueado. Se muestra tal cual.
 
 Un timeout es un checkpoint, no una falla.
 
@@ -239,7 +342,7 @@ Si algo no está limpio, no borrar y decir qué quedó y dónde.
 
 ## Checklist
 
-- [ ] Se verificaron las cuatro precondiciones antes de crear nada.
+- [ ] Se verificaron las cinco precondiciones antes de crear nada.
 - [ ] Cada ticket se despachó a un hijo con su worktree — ninguno se trabajó en la sesión del conductor, ni siquiera el único de la tanda.
 - [ ] No se preguntó si había que crear el worktree ni el hijo: se creó y se reportó.
 - [ ] Los tickets que el usuario nombró se crearon sin pedir OK, y se reportó qué se creó.
@@ -251,7 +354,12 @@ Si algo no está limpio, no borrar y decir qué quedó y dónde.
 - [ ] Cada ticket de la tanda quedó en `In Progress` al cortarse su rama, no en `Todo` con una rama viva.
 - [ ] Cada agente dejó su comentario en el ticket con las capturas **embebidas**, sin esperar el push.
 - [ ] Las ramas de front y de back se ven en `orca-ide worktree list`, no solo la del wrapper.
-- [ ] Los gates se presentaron de a uno, con el nombre del agente adelante, y se respondieron con `reply` solo con la respuesta del usuario.
+- [ ] Ningún gate se resolvió sin haber leído el diff del hijo y pasarle `code-review`.
+- [ ] Cada gate que el conductor resolvió solo se reportó en una línea, con el criterio.
+- [ ] Lo delicado (arquitectura, contratos compartidos, permisos, infra, irreversible, alcance desbordado, dos caminos sin ganador) subió al usuario.
+- [ ] Los hallazgos de review volvieron al hijo con `reply`, y el conductor no editó el worktree de nadie.
+- [ ] Los gates que subieron se presentaron de a uno, con el nombre del agente adelante y el motivo de no haberlo decidido, y se respondieron con `reply` solo con la respuesta del usuario.
+- [ ] El usuario no tuvo que hablarle a ningún hijo para saber en qué estaba la tanda.
 - [ ] Ningún agente se cerró ni reinició por no haber contestado todavía.
 - [ ] Cada mensaje de Discord cubrió **un** ticket con todas sus ramas, y salió en cuanto ese ticket estuvo verde.
 - [ ] Ningún ticket se anunció con una de sus ramas en rojo o todavía corriendo.
@@ -281,9 +389,20 @@ Si algo no está limpio, no borrar y decir qué quedó y dónde.
   que este conductor lo creó. Ver *Cada sesión es su propia tanda*.
 - **Matar un agente por silencio** — un timeout de `check --wait` es un
   checkpoint. Las tareas de código tardan 15-60 minutos.
-- **Responder un gate en nombre del usuario "para no interrumpirlo"** — es
-  exactamente lo que vacía el flujo del ticket. El conductor serializa las
-  preguntas, no las contesta.
+- **Aprobar un gate sin leer el diff** — "el hijo dice que el QA pasó" no es
+  evidencia, es una cita. Si nadie miró el código, la revisión no existió y el
+  usuario cree que sí.
+- **Escalar todo igual "por prudencia"** — devuelve al usuario las cinco
+  preguntas de cada hijo, que es justo el ruido que el conductor viene a
+  absorber. Lo derivable se decide.
+- **Decidir algo delicado porque "la recomendación era obvia"** — un contrato
+  compartido, una migración o un permiso no se vuelven menos delicados por tener
+  una respuesta clara. Lo que define el escalamiento es el radio de daño, no la
+  dificultad.
+- **Arreglar el hallazgo de review en el worktree del hijo** — lo deja con el
+  árbol movido bajo los pies y sin saber por qué. Va con `reply`.
+- **Que el usuario se entere de algo abriendo el pane de un hijo** — si tuvo que
+  ir a buscarlo, el conductor no reportó.
 - **Amontonar los gates de varios agentes en un mensaje** — de a uno, con el
   nombre adelante.
 - **Postear con la mención sin resolver** — sale `@Nombre` como texto plano, no
@@ -343,7 +462,12 @@ Si algo no está limpio, no borrar y decir qué quedó y dónde.
   poder referirse a ellos.
 - Cuando un agente termina, resumir en una línea qué hizo, antes de pasar al
   siguiente.
-- Si la tanda es chica, `relayGates: "all"`. `"judgment-only"` es para cuando
-  hay muchos tickets y las preguntas derivables se vuelven ruido.
+- El default es `relayGates: "delicate-only"`: decidir lo recomendado, escalar
+  lo delicado. `"judgment-only"` y `"all"` existen para quien quiera más control
+  — `"all"` releva los cinco gates de cada hijo, y con dos o tres tickets en
+  paralelo eso es mucho ruido.
+- Al resolver un gate, decir el criterio en la misma línea ("sigue el patrón de
+  los hermanos", "sin dependencias nuevas"). Es lo que le permite al usuario
+  corregir el rumbo sin tener que revisar todo de nuevo.
 - Al cerrar la tanda, dejar una tabla de qué quedó: ticket, PRs, estado del
   anuncio, y si el worktree sigue vivo o se borró.

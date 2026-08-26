@@ -1,4 +1,4 @@
-# Agentes — crear, nombrar, supervisar y relevar gates
+# Agentes — crear, nombrar, supervisar y resolver gates
 
 Detalle operativo de las fases 0, 3 y 4. Todo el mecanismo multi-agente es
 orquestación de Orca; el conductor no reimplementa mensajería.
@@ -205,15 +205,20 @@ antes que la skill:
 > No bajes containers, no borres worktrees ni ramas que no sean de tu ticket. Los
 > demás tienen sus propios stacks corriendo y su propio trabajo sin commitear.
 
-Por qué importa más de lo que parece: el usuario le habla a los agentes
-**directo, por el pane de Orca**, no solo a través del conductor. Ahí una frase
-corta como "eliminamos esto" no trae contexto de a qué se refiere, y un agente
-que se cree con jurisdicción sobre todo el workspace puede razonar sobre —o peor,
-tocar— el worktree de otro. Un worktree borrado con trabajo sin pushear no se
-recupera.
+Por qué importa más de lo que parece: **el usuario no le habla a los hijos**, y
+todo lo que un hijo sabe llega por el `--spec` y los `reply` del conductor. Un
+agente que se cree con jurisdicción sobre todo el workspace empieza a reportar
+sobre trabajo que no es suyo —y en el peor caso a tocarlo—, y ni él ni el
+conductor tienen forma de detectarlo hasta que ya pasó. Un worktree borrado con
+trabajo sin pushear no se recupera.
 
-El conductor, en cambio, sí ve la tanda entera: es su trabajo. La asimetría es a
-propósito.
+Vale igual si el usuario le escribe directo por el pane de Orca, que puede pasar
+aunque el flujo no lo pida: ahí una frase corta como "eliminamos esto" no trae
+contexto de a qué se refiere, y la regla es la misma — es sobre su worktree, o
+pregunta.
+
+El conductor, en cambio, sí ve la tanda entera: es su trabajo, y es el único que
+le habla al usuario. La asimetría es a propósito.
 
 ### El `--spec` del task
 
@@ -223,8 +228,10 @@ Tiene que decirle al agente ocho cosas, explícitas:
    y de tipo, casos de prueba si los describe).
 2. **Que use la skill `ticket-workflow`** para trabajarlo, no que improvise.
 3. **Que los cinco gates se preguntan al conductor con `ask`**, no se resuelven
-   solos. Sin esta línea el agente asume que puede decidir, y los gates se
-   evaporan.
+   solos, y que **no le hablan al usuario**: el conductor es su único
+   interlocutor. Sin esta línea el agente asume que puede decidir, y los gates se
+   evaporan. La respuesta puede venir del conductor o del usuario a través suyo;
+   para el hijo es lo mismo, y no tiene que averiguar cuál fue.
 4. **Que registre en Orca los submódulos que toca** (ver arriba), así el usuario
    ve las ramas de front y de back en la app y no solo la del wrapper. Está en el
    paso 5.7 de su propia skill; repetirlo acá es el recordatorio, y sin ninguno de
@@ -322,34 +329,65 @@ orca-ide orchestration task-list --brief --json
 Actualizar el comentario de la tarjeta del worktree en los checkpoints es
 trabajo del agente, no del conductor.
 
-## Relevar un gate
+## Resolver o escalar un gate
 
 El corazón del diseño. Cuando llega un `decision_gate` (o un `ask` de un
-agente):
+agente), el conductor **triagea**; no reenvía por reflejo.
 
-1. **Mostrarlo con el nombre del agente adelante**, y la pregunta textual:
-
-   > **TCK-262 · slug-corto** pregunta: ¿tipo de rama? Propone `fix`
-   > porque el ticket tiene label `Bug`.
-
-2. **Esperar la respuesta del usuario.** No responder por él.
-
-3. Devolvérsela al agente:
+1. **Leer el diff del hijo y pasarle `code-review`.** En el wrapper y en cada
+   submódulo:
 
    ```bash
-   orca-ide orchestration reply --id <msgId> --body "<respuesta del usuario>" --json
+   git -C <worktree> status --short
+   git -C <worktree>/<submódulo> diff --stat
+   git -C <worktree>/<submódulo> diff
    ```
 
-4. Volver a la ventana de `check --wait`.
+   Sin esto no hay decisión que tomar: aprobar lo que no se leyó es firmar en
+   blanco. Y no se edita nada acá — el conductor revisa, no arregla.
+
+2. **Aplicar el test de decisión** — ver *Qué decide el conductor, y qué te
+   pregunta* en la skill. Tres salidas:
+
+   - **Resoluble** → `reply` con la respuesta y su criterio, y una línea de
+     reporte al usuario:
+
+     ```bash
+     orca-ide orchestration reply --id <msgId> \
+       --body "fix — el ticket tiene label Bug y el config mapea Bug→fix" --json
+     ```
+
+   - **Hallazgo de review** → `reply` al hijo con el hallazgo, no al usuario.
+     Recién si el hijo no lo arregla, sube.
+
+   - **Delicado** → al usuario, **con el nombre del agente adelante**, la
+     recomendación si la hay, y **por qué no se decidió solo**:
+
+     > **TCK-262 · slug-corto** propone agregar una columna a la tabla
+     > compartida. Es un contrato que consume el resto del sistema, así que no
+     > lo decido: ¿va así, o lo resolvemos dentro del módulo?
+
+     Esperar la respuesta y devolverla con `reply`, textual.
+
+3. **Volver a la ventana de `check --wait`.**
 
 ### De a uno
 
-Si llegan gates de varios agentes a la vez, se presentan **de a uno**, en el
+Si suben gates de varios agentes a la vez, se presentan **de a uno**, en el
 orden en que llegaron, con el nombre del agente adelante. No amontonarlos en un
 mensaje: eso es exactamente lo que el conductor viene a evitar — que tres
 sesiones le griten al usuario a la vez.
 
-El valor que agrega el conductor acá no es decidir, es **serializar**.
+El valor que agrega acá es doble: **absorber** lo que ya venía decidido por el
+código y el config, y **serializar** lo que queda.
+
+### Con `relayGates: "delicate-only"` (el default)
+
+El conductor resuelve cualquiera de los cinco cuando tiene una respuesta
+recomendada que puede defender en una línea, y escala solo lo delicado. El
+listado exacto de qué cae en cada lado está en la skill; el criterio es el
+**radio de daño**, no la dificultad: una decisión fácil sobre un contrato
+compartido sube igual.
 
 ### Con `relayGates: "judgment-only"`
 
@@ -360,8 +398,8 @@ El conductor responde solo dos, y solo si el ticket tiene la señal:
 - **Rama base** — desde la label de ambiente. Si la label es `draft`, `design` o
   no hay ninguna, **no** hay señal: se relevea igual.
 
-Cráneo, QA y PR se relevean **siempre**, en los dos modos. No existe un modo que
-los responda por el usuario.
+Cráneo, QA y PR se relevean **siempre** en este modo y en `"all"`. Lo que ningún
+modo permite es decidir lo delicado: eso sube en los tres.
 
 ### Escalations
 
@@ -371,8 +409,11 @@ agente, sin intentar resolverlo por él.
 
 ## Lo que el conductor no hace acá
 
-- No responde un gate en nombre del usuario (salvo los dos derivables en modo
-  `judgment-only`).
+- No decide lo delicado: arquitectura, contratos compartidos, permisos, infra,
+  lo irreversible, el alcance desbordado, o dos caminos sin ganador claro. Eso
+  sube en los tres modos de `relayGates`.
+- No resuelve un gate sin haber leído el diff, ni arregla en el worktree del hijo
+  lo que encontró revisándolo.
 - No pushea, no mergea, no aprueba PRs. Tampoco los hijos: dejan la rama lista
   para publicar y esperan a que el humano la publique — recién ahí abren la PR.
 - No mata un agente por silencio.

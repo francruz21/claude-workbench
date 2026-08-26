@@ -22,10 +22,15 @@ Esta skill trabaja **un ticket, dentro de un worktree**. Casi siempre la corre u
 agente hijo que despachó el conductor, y eso define tres cosas que no se deducen
 del ticket:
 
-- **Tu interlocutor es quien te despachó.** Los cinco gates de abajo se le
-  preguntan a él con `ask` — el conductor los relevea al usuario y te devuelve la
-  respuesta. No se resuelven solos "porque el conductor está ocupado": un gate
-  que nadie contestó no está contestado.
+- **Tu interlocutor es quien te despachó, y es el único.** Los cinco gates de
+  abajo se le preguntan a él con `ask`. El conductor resuelve los que puede y
+  sube al usuario los delicados; **cuál de los dos contestó no es asunto tuyo**,
+  y no hay que averiguarlo. Lo que no se hace es resolverlos solo "porque el
+  conductor está ocupado": un gate que nadie contestó no está contestado.
+- **Al usuario no le hablás.** No escribas para él, no lo esperes, no le pidas
+  nada: no está mirando tu pane. Todo lo que tenga que saber lo reporta el
+  conductor, así que lo que tengas para decir va para arriba, en tus mensajes y
+  en el comentario del ticket.
 - **Tu mundo es un solo worktree: el tuyo.** No listes, no leas, no modifiques ni
   razones sobre otros worktrees, otras ramas, otros tickets ni otros agentes,
   aunque estén al lado en el mismo directorio y los puedas ver. No sabés qué pasa
@@ -67,6 +72,10 @@ Reglas de forma:
   vuelve a preguntar; no se asume.
 - **Ante duda entre preguntar y asumir, se pregunta.** Preguntar de más cuesta
   un mensaje; asumir de más cuesta rehacer el trabajo.
+- **Un hallazgo de review que vuelve por `reply` se arregla, no se discute.** El
+  conductor le pasa `code-review` a tu diff antes de aprobar un gate; si te
+  devuelve algo, es parte del mismo gate y todavía no está aprobado. Si no estás
+  de acuerdo, contestá con el argumento — pero no sigas de largo.
 
 ## Requiere
 

@@ -135,7 +135,7 @@ bajan desde la capa de usuario (ver la seccion siguiente).
 | `orca.wrapperRepoId` | string | id en Orca del repo wrapper que agrupa `repos` |
 | `gateWorkflow` | string | workflow de CI que actua de gate antes de anunciar |
 | `notifiedLabel` | string | label que marca un ticket como ya anunciado |
-| `relayGates` | `"all"` \| `"judgment-only"` | que gates viajan hasta el usuario. `"all"` releva los cinco y es el default. `"judgment-only"` deja que el conductor responda los dos derivables de labels (tipo de rama y rama base) y releva craneo, QA y PR siempre; es una concesion para tandas grandes, no el default |
+| `relayGates` | `"delicate-only"` \| `"judgment-only"` \| `"all"` | que gates viajan hasta el usuario. `"delicate-only"` es el **default**: el conductor resuelve todo gate con una respuesta recomendada que pueda defender en una linea, y escala solo lo delicado (arquitectura, contratos compartidos, permisos, lo irreversible, el alcance desbordado, dos caminos sin ganador claro) — ver la seccion *Que decide el conductor* de la skill. `"judgment-only"` resuelve solo los dos derivables de labels (tipo de rama y rama base) y releva craneo, QA y PR siempre. `"all"` releva los cinco, para quien quiera control total |
 
 ### Por que esos cinco campos bajaron de `user` a `project`
 
@@ -173,6 +173,6 @@ no exige tocar nada compartido.
   "repos": [{ "slug": "<slug-de-repo>", "tag": "<tag-de-repo>" }],
   "gateWorkflow": "<nombre-del-workflow>",
   "notifiedLabel": "<label-de-ya-anunciado>",
-  "relayGates": "all"
+  "relayGates": "delicate-only"
 }
 ```
