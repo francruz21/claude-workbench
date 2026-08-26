@@ -313,9 +313,19 @@ crash. Tres pasos:
    hijo vivo.
 3. **Reportar lo encontrado antes de tocar nada.**
 
-Después, por cada ticket: hijo vivo → reattach; hijo muerto → revivir un agente
-**en ese worktree**; sin worktree → el flujo normal del paso 3. Ver
+Después, por cada ticket: hijo muerto → revivir un agente **en ese worktree**;
+sin worktree → el flujo normal del paso 3. Ver
 [`reference/agents.md`](reference/agents.md#reconciliar-una-tanda-que-sobrevivió-a-la-sesión).
+
+**Un hijo vivo no se reattachea sin preguntar.** Si esta sesión recién arrancó,
+todo hijo vivo que 0.5 encuentre es, por construcción, uno que no creó — y puede
+haber otra terminal conduciéndolo ahora mismo. Ahí vale la regla de *Cada sesión
+es su propia tanda*: se pregunta **una sola vez** por toda la tanda antes de
+hacerse cargo. Reattachear en silencio pone dos conductores sobre el mismo hijo,
+y eso son dos respuestas al mismo gate y dos anuncios que no se deshacen.
+
+Los hijos **muertos** no tienen ese problema: nadie puede estar conduciendo en
+vivo a un agente muerto. Ahí se reconcilia y se sigue, sin preguntar.
 
 **Que un ticket ya tenga worktree no habilita a trabajarlo acá.** Encontrar
 trabajo a medias no convierte al conductor en el hijo.
