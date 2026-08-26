@@ -1,17 +1,22 @@
 ---
 name: conductor
-description: Use cuando el usuario pega uno o varios links o IDs de ticket y espera que Claude los trabaje en paralelo supervisando agentes, en vez de trabajarlos él mismo en esta sesión. Crea un worktree con su propio agente por ticket, relevea al usuario los gates de ticket-workflow, anuncia en Discord cada ticket en cuanto sus PRs pasan el gate, y cierra el worktree de cada ticket en cuanto su PR quedó publicada y anunciada, sin esperar el merge. NO usar para un solo ticket que el usuario quiere trabajar acá mismo (usar ticket-workflow directo), ni para anunciar PRs que no pasaron por este flujo.
+description: Use cuando el usuario pega uno o más links o IDs de ticket, o dice "trabajá este ticket" — también si es uno solo. Es el único punto de entrada de un ticket: el conductor no lo trabaja, crea sin pedir OK un worktree con su propio agente hijo por ticket y lo pone a trabajarlo con ticket-workflow, le pone un nombre legible y lo reporta. Después relevea al usuario los gates de cada hijo, anuncia en Discord cada ticket en cuanto sus PRs pasan el gate, y cierra el worktree en cuanto la PR quedó publicada y anunciada, sin esperar el merge. NO usar si esta sesión ya es un hijo despachado por un conductor, ni para anunciar PRs que no pasaron por este flujo.
 ---
 
 # Conductor
 
 ## Propósito
 
-Supervisar varios tickets a la vez sin perder los controles que hacen confiable
-el trabajo de cada uno. Por cada ticket, un worktree con su propio agente que lo
-trabaja con `ticket-workflow`; el conductor coordina, transporta las decisiones
-al usuario, anuncia los PRs cuando están verdes, y cierra cada worktree en
-cuanto su ticket quedó anunciado.
+Ser **el único punto de entrada de un ticket**, y supervisar los que estén
+abiertos a la vez sin perder los controles que hacen confiable el trabajo de cada
+uno. Por cada ticket, un worktree con su propio agente hijo que lo trabaja con
+`ticket-workflow`; el conductor coordina, transporta las decisiones al usuario,
+anuncia los PRs cuando están verdes, y cierra cada worktree en cuanto su ticket
+quedó anunciado.
+
+**Un ticket también es una tanda.** Que sea uno solo no habilita a trabajarlo
+acá: entra por el mismo camino que diez, con su worktree y su hijo. La topología
+no cambia con el volumen, y por eso es predecible.
 
 El conductor **no hace el trabajo del ticket** y **no agrega autonomía**. Lo que
 agrega es paralelismo y orden.
@@ -40,6 +45,10 @@ No completar en silencio.
 No son limitaciones pendientes: son restricciones de diseño. Si algo de esto
 parece necesario, la respuesta es preguntarle al usuario, no hacerlo.
 
+- **No trabaja el ticket.** No implementa, no corre el QA, no toca los repos de
+  trabajo. Lee el ticket para armar el `--spec` y ahí termina su relación con el
+  contenido. Si se encontró editando código de un ticket, se equivocó de rol: eso
+  es de un hijo, y el hijo hay que crearlo.
 - **No pushea, no mergea, no aprueba PRs.** Nada de `git push`, `git merge`,
   `gh pr merge`, `gh pr review --approve`. Tampoco los hijos: dejan la rama
   lista para publicar (sin upstream, a propósito) y esperan a que el humano
@@ -64,20 +73,41 @@ parece necesario, la respuesta es preguntarle al usuario, no hacerlo.
 
 ## Cuándo usarla
 
-- El usuario pega **varios** links o IDs de ticket de una.
-- Pega uno y dice explícitamente que lo trabaje en un worktree aparte, o que lo
-  supervise.
+- El usuario pega **un** link o ID de ticket, o varios. Uno alcanza: no hace
+  falta que pida un worktree, ni que diga que lo supervises.
+- Dice "trabajá este ticket", "manos a la obra con esto", o equivalente.
 - Pide anunciar en Discord los PRs de tickets que se trabajaron con este flujo.
 - Pide limpiar los worktrees de tickets ya anunciados.
 
 ## Cuándo NO usarla
 
-- **Un solo ticket que el usuario quiere trabajar en esta sesión** → usar
-  `ticket-workflow` directo. Levantar un agente aparte para eso solo agrega
-  intermediarios entre el usuario y su propio trabajo.
+- **Esta sesión ya es un hijo** despachado por un conductor: corre dentro del
+  worktree de un ticket y su interlocutor es quien la despachó. Un hijo no crea
+  nietos. Si le llega otro ticket, lo dice para arriba y no lo agarra.
+- El usuario ya tiene una rama en curso y pide ayuda con el código, sin ticket
+  nuevo de por medio → no hay nada que despachar.
 - Anunciar PRs que no salieron de este flujo — no hay comentario de ticket del
   que sacar la descripción de cada línea.
 - El usuario pide "leeme estos tickets" sin más → leerlos y parar.
+
+## Cada sesión es su propia tanda
+
+El usuario abre terminales en paralelo, y **una sesión nueva no es este
+conductor**. No hereda la tanda, no comparte el registro `ticket → {name,
+worktreeId, handle, taskId, dispatchId}`, y no sabe qué gates ya se relevaron.
+
+Reglas para una sesión que arranca al lado de otra:
+
+- **Solo maneja los agentes que creó ella.** No relevea gates, no anuncia y no
+  borra worktrees de agentes que no despachó. Dos padres relevando el mismo gate
+  le hacen contestar dos veces al usuario; dos padres anunciando el mismo PR
+  mandan dos pings que no se deshacen.
+- **El contexto se pide, no se asume.** Si el usuario quiere que esta sesión se
+  haga cargo de una tanda que arrancó en otra, lo dice. Recién ahí se reconstruye
+  el estado **leyendo Orca y el tracker** (`worktree list`, el estado de las PRs,
+  la label de anunciado), nunca de memoria ni adivinando qué hizo la otra sesión.
+- **Que exista un worktree en Orca no significa que sea tuyo.** Es la señal de
+  que hay trabajo vivo, y con eso alcanza para no pisarlo.
 
 ## Pasos detallados
 
@@ -93,7 +123,7 @@ del ticket.
 
 ### 1. Detección — automático si el usuario los nombró
 
-Parsear lo que pegó el usuario:
+Parsear lo que pegó el usuario — **uno o varios, el camino es el mismo**:
 
 - `linear.app/<org>/issue/<ID>/<slug>` → `<ID>`
 - `<algo>.atlassian.net/browse/<ID>` → `<ID>`
@@ -137,6 +167,16 @@ Nunca pedir estos datos y guardarlos a mano en el repo: el repo es público.
 Uno por ticket, con nombre legible (`TCK-262 · slug-corto`), worktree a
 nivel del wrapper, `--agent claude`, y el task despachado con `--inject`. Ver
 [`reference/agents.md`](reference/agents.md#crear-y-nombrar-un-agente).
+
+**Esto no se pregunta.** Ni "¿creo el worktree?", ni "¿lo despacho?", ni "¿lo
+trabajo acá o levanto un agente?". Crear el hijo con su worktree **es** el
+trabajo del conductor: preguntarlo es preguntar si va a hacer lo que se le
+pidió. Se crea y se reporta.
+
+**El nombre lo pone el padre, siempre**, y sale del ticket (`<ID> · slug-corto`).
+Un hijo sin nombre legible deja al usuario sin forma de referirse a él: la
+tarjeta muestra el slug crudo y los gates llegan de un agente anónimo. El
+`--display-name` va en un segundo comando, porque `create` no lo acepta.
 
 Registrar `ticket → {name, worktreeId, handle, taskId, dispatchId}`. El nombre
 es cómo el usuario y el conductor hablan de ese agente.
@@ -200,6 +240,8 @@ Si algo no está limpio, no borrar y decir qué quedó y dónde.
 ## Checklist
 
 - [ ] Se verificaron las cuatro precondiciones antes de crear nada.
+- [ ] Cada ticket se despachó a un hijo con su worktree — ninguno se trabajó en la sesión del conductor, ni siquiera el único de la tanda.
+- [ ] No se preguntó si había que crear el worktree ni el hijo: se creó y se reportó.
 - [ ] Los tickets que el usuario nombró se crearon sin pedir OK, y se reportó qué se creó.
 - [ ] Se confirmó antes de crear sólo si el alcance era elástico, el ticket era ambiguo, o dos tickets se pisaban.
 - [ ] Si dos tickets se pisan, se avisó antes de arrancarlos en paralelo.
@@ -221,9 +263,22 @@ Si algo no está limpio, no borrar y decir qué quedó y dónde.
 - [ ] La label de anunciado se puso **después** del envío exitoso.
 - [ ] Antes de borrar, las tres verificaciones pasaron en el wrapper y en cada submódulo.
 - [ ] Nada se pusheó, mergeó ni aprobó desde el conductor.
+- [ ] No se relevaron gates, ni se anunció, ni se borraron worktrees de agentes que esta sesión no despachó.
 
 ## Errores comunes
 
+- **Ponerse a trabajar el ticket en vez de despacharlo** — es el error más caro,
+  porque no se nota: sale trabajo, pero sin worktree propio, sin tarjeta en Orca,
+  sin gates relevados y pisando el checkout donde el usuario tiene lo suyo. Un
+  ticket solo no es la excepción.
+- **Preguntar si hay que crear el worktree o el hijo** — el usuario ya lo decidió
+  cuando mandó el ticket al conductor. Ese turno no protege nada.
+- **Dejar al hijo sin nombre** — los gates llegan de un agente que el usuario no
+  puede nombrar, y no tiene forma de decir "el de TCK-262 que se pare".
+- **Que un hijo despache nietos** — si a un hijo le llega otro ticket, lo reporta
+  para arriba. Un worktree adentro de un worktree no lo pidió nadie.
+- **Adoptar la tanda de otra sesión** — un worktree vivo en Orca no es prueba de
+  que este conductor lo creó. Ver *Cada sesión es su propia tanda*.
 - **Matar un agente por silencio** — un timeout de `check --wait` es un
   checkpoint. Las tareas de código tardan 15-60 minutos.
 - **Responder un gate en nombre del usuario "para no interrumpirlo"** — es

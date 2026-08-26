@@ -74,7 +74,7 @@ orca-ide orchestration task-create --spec "<spec del ticket>" --json
 orca-ide orchestration dispatch --task <taskId> --to <handle> --inject --json
 ```
 
-### El nombre
+### El nombre — lo pone el padre, siempre
 
 `<TICKET-ID> · <slug-corto>`, por ejemplo `TCK-262 · slug-corto`. Es el
 `displayName` del worktree y es **cómo el usuario y el conductor hablan de ese
@@ -132,7 +132,10 @@ Tampoco hay comando de adopción: `worktree show --worktree path:<submódulo>`
 devuelve `selector_not_found`, y `worktree set` exige un selector que ya exista.
 
 Así que **el agente hijo registra sus propios submódulos**, apenas cortó la rama
-en cada uno y antes de empezar a trabajar:
+en cada uno y antes de empezar a trabajar. Es el **paso 5.7 de
+`ticket-workflow`**, así que el hijo lo tiene en su propio flujo; el `--spec` lo
+repite porque es justo lo que un agente supervisado se saltea, no porque sea la
+única fuente:
 
 ```bash
 orca-ide repo add --path "<worktree>/repo-front" --json
@@ -188,7 +191,9 @@ agente puede listarlos, leerlos y razonar sobre ellos. Nada se lo impide, así q
 **hay que decírselo**, o ante la primera orden ambigua sale a inspeccionar el
 workspace entero y opina sobre trabajo que no es suyo.
 
-Va en el `--spec`, textual:
+Está también en la sección *Dónde corre esta skill, y con quién habla* de
+`ticket-workflow`, pero va igual en el `--spec`, textual — el hijo lee el spec
+antes que la skill:
 
 > Tu mundo es **un solo worktree**: el tuyo. No listes, no leas, no modifiques ni
 > razones sobre otros worktrees, otras ramas, otros tickets ni otros agentes,
@@ -221,15 +226,17 @@ Tiene que decirle al agente ocho cosas, explícitas:
    solos. Sin esta línea el agente asume que puede decidir, y los gates se
    evaporan.
 4. **Que registre en Orca los submódulos que toca** (ver arriba), así el usuario
-   ve las ramas de front y de back en la app y no solo la del wrapper. Sin esta
-   línea el trabajo existe pero es invisible.
+   ve las ramas de front y de back en la app y no solo la del wrapper. Está en el
+   paso 5.7 de su propia skill; repetirlo acá es el recordatorio, y sin ninguno de
+   los dos el trabajo existe pero es invisible.
 5. **Que deje rastro en el tracker**: el ticket a `In Progress` al cortar la
    rama, y el comentario con capturas **embebidas** cuando tenga evidencia. Los
    dos pasos ya están en `ticket-workflow` y son justo los que un agente
    supervisado se saltea — ver arriba.
-6. **Que su mundo es un solo worktree** (ver *Cada agente vive en su worktree*).
-   Sin esta línea, la primera orden ambigua lo manda a inspeccionar la tanda
-   entera.
+6. **Que su mundo es un solo worktree**, que no sabe nada de lo que pasa más
+   arriba ni de sus hermanos, y que **no despacha agentes** (ver *Cada agente vive
+   en su worktree*). Sin esta línea, la primera orden ambigua lo manda a
+   inspeccionar la tanda entera.
 7. **El reviewer de la PR, y dónde viven los configs.** El config de proyecto
    está en el **wrapper** (`.claude/workbench.project.json`), no en el
    submódulo donde el agente trabaja. Sin esta línea el agente busca en su

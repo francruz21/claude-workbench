@@ -1,6 +1,6 @@
 ---
 name: ticket-workflow
-description: Use cuando el usuario pega un link o ID de ticket (Linear, Jira, Trello u otro tracker) y espera que Claude analice el ticket, cree la rama correspondiente, implemente, pruebe en el navegador, commitee y publique el trabajo. También aplica si el usuario dice explícitamente "trabajá este ticket" o pide crear una rama a partir de un ticket. NO aplica para crear ramas sin relación a un ticket, ni para el proceso de abrir la PR en sí mismo (ver playbook create-pr para eso, aunque esta skill también lo ofrece al final).
+description: Use cuando ya hay un ticket concreto que trabajar acá: leerlo, cortar la rama, implementar, probar en el navegador, commitear y dejar el trabajo listo para publicar. Es la skill del **hijo**: normalmente la invoca el agente que el conductor despachó en el worktree de ese ticket, y ahí el interlocutor de los cinco gates es quien lo despachó, no el usuario. Si el usuario pega un link o ID de ticket en una sesión que no es un hijo despachado, el punto de entrada es `conductor` — él crea el worktree y el hijo, y esta skill corre adentro. NO aplica para crear ramas sin relación a un ticket, ni para abrir la PR de un trabajo que no pasó por acá (ver playbook create-pr).
 ---
 
 # Ticket Workflow
@@ -15,6 +15,30 @@ convención de ramas y commits específica del repo donde se trabaja, sin volver
 preguntar lo ya configurado, sin commitear nunca sin confirmación explícita, y
 sin pushear nunca: publicar la rama es decisión del humano, no de quien trabaja
 el ticket.
+
+## Dónde corre esta skill, y con quién habla
+
+Esta skill trabaja **un ticket, dentro de un worktree**. Casi siempre la corre un
+agente hijo que despachó el conductor, y eso define tres cosas que no se deducen
+del ticket:
+
+- **Tu interlocutor es quien te despachó.** Los cinco gates de abajo se le
+  preguntan a él con `ask` — el conductor los relevea al usuario y te devuelve la
+  respuesta. No se resuelven solos "porque el conductor está ocupado": un gate
+  que nadie contestó no está contestado.
+- **Tu mundo es un solo worktree: el tuyo.** No listes, no leas, no modifiques ni
+  razones sobre otros worktrees, otras ramas, otros tickets ni otros agentes,
+  aunque estén al lado en el mismo directorio y los puedas ver. No sabés qué pasa
+  más arriba ni cuántos hermanos hay, y no te hace falta. Si te llega una orden
+  que no dice sobre qué worktree es, es sobre el tuyo; si de verdad no se puede
+  saber, **preguntá** — no la interpretes en grande. No bajes containers ni borres
+  worktrees o ramas que no sean de tu ticket.
+- **Un hijo no crea nietos.** Si te llega otro ticket, lo reportás para arriba y
+  no lo agarrás. Despachar agentes es del conductor.
+
+Si en cambio esta skill se invocó **sin** conductor (no hay orquestación, o el
+usuario la pidió explícitamente para un ticket en este checkout), el interlocutor
+es el usuario directo y todo lo demás del flujo no cambia.
 
 ## Las preguntas no se saltean nunca
 
@@ -303,7 +327,17 @@ repo (campo `branchNameCI`) para no tener que redescubrirlo cada vez.
    En inglés hubiera sido `fix/EX-107-fix-modal-color-error`.
 
 4. **Crear la rama como worktree de Orca**, para que el trabajo sea visible en
-   Orca IDE:
+   Orca IDE — **salvo que ya estés adentro de uno**:
+
+   **Primero, mirar dónde estás.** Si un conductor te despachó, el worktree de
+   este ticket **ya existe y es donde estás corriendo**: ahí no se crea nada, se
+   cortan las ramas acá mismo y se sigue. Verificarlo con
+   `orca-ide worktree show --worktree active --json` (o por el path del cwd
+   contra `worktree list`) antes de crear.
+
+   Esto **no se pregunta nunca**. Ni "¿creo el worktree?" ni "¿trabajo acá o en
+   uno nuevo?": o ya estás en uno y se usa, o no hay ninguno y se crea. Es una
+   verificación, no una decisión del usuario.
 
    ```
    orca-ide worktree create --repo id:<repoId> --name <nombre-rama> --base-branch <rama-base> --json
@@ -345,6 +379,33 @@ repo (campo `branchNameCI`) para no tener que redescubrirlo cada vez.
    el ticket era de Linear, renombrarla en el momento con
    `git branch -m <nombre-nuevo>` (preserva cambios sin commitear) en vez de
    recrearla desde cero.
+
+7. **Registrar en Orca los submódulos que tocás** — apenas cortaste la rama en
+   cada uno y antes de empezar a trabajar. **Orca no los descubre solo:** la
+   tarjeta del worktree muestra la rama del wrapper y nada más, así que las ramas
+   de front y de back quedan invisibles en la app aunque en disco existan y
+   tengan commits.
+
+   ```
+   orca-ide repo add --path "<worktree>/<submódulo>" --json
+   orca-ide worktree set --worktree "path:<worktree>/<submódulo>" \
+     --display-name "<TICKET-ID> · front" --json
+   ```
+
+   Reglas:
+
+   - **Uno por submódulo que efectivamente tocás**, con `· front` y `· back` en
+     el nombre (`back` es la palabra del equipo para la API). Un submódulo que
+     quedó en detached sobre el pin del wrapper, sin rama propia, no se registra:
+     su tarjeta no dice nada útil.
+   - **Le toca al hijo, no al conductor.** El hijo es el único que sabe qué
+     submódulos terminó tocando; cuando el conductor creó el worktree, esos
+     directorios podían estar incluso vacíos.
+   - Verificar que quedó: `orca-ide worktree list --json` tiene que mostrar una
+     entrada por cada uno, con su rama.
+   - No hay comando de adopción — `worktree show --worktree path:<submódulo>`
+     devuelve `selector_not_found` y `worktree set` exige un selector que ya
+     exista. Por eso va `repo add` primero.
 
 ### 6. Cráneo: cómo encarar la tarea — bloqueante
 
@@ -569,7 +630,9 @@ config exista ahorra el onboarding, no los gates.
 - [ ] Si el ticket no tenía label de ambiente, o tenía `draft`/`design`, se preguntó de qué rama nace en vez de asumir el default.
 - [ ] Si el patrón del CI admite sufijo de ambiente, el nombre de rama lo lleva según la label.
 - [ ] Se presentó el cráneo (causa, archivos, enfoque, casos de prueba) y el usuario lo aprobó **antes** de escribir código.
+- [ ] Se verificó si ya se estaba adentro de un worktree antes de crear uno, y no se preguntó por eso.
 - [ ] La rama se creó desde la base actualizada del remoto, con el patrón configurado, y como worktree de Orca (o se avisó el fallback).
+- [ ] Cada submódulo con rama propia quedó registrado en Orca (`repo add` + `worktree set --display-name "<TICKET> · front|back"`) y aparece en `worktree list`.
 - [ ] El ticket se movió a `In Progress` y la tarjeta de Orca a `in-progress` al crear la rama.
 - [ ] Se ejecutaron los casos de prueba en el navegador, con el usuario/rol que pedía el ticket, y se capturó una screenshot por caso del estado implementado.
 - [ ] El usuario dio el OK explícito del QA antes de commitear.
@@ -580,6 +643,8 @@ config exista ahorra el onboarding, no los gates.
 - [ ] Antes de abrir la PR se verificó que la rama ya tuviera upstream (`@{u}`); si no lo tenía, se esperó sin pushear ni volver a preguntar.
 - [ ] La PR apunta a la rama de nacimiento y no a `main`, y quedó con reviewer asignado en GitHub.
 - [ ] El ticket quedó en `In Review` y la tarjeta de Orca en `in-review`.
+- [ ] Los cinco gates se le preguntaron a quien despachó el trabajo, y ninguno se resolvió solo.
+- [ ] No se leyó, tocó ni se razonó sobre otro worktree, otra rama u otro ticket que el propio.
 
 ## Ejemplos
 
@@ -636,6 +701,22 @@ el comentario final publicado en el ticket con las capturas embebidas.
   del repo — pasar siempre `--base` con la rama de nacimiento.
 - **Cambiar el assignee del ticket al reviewer** — el reviewer se asigna en la
   PR de GitHub; el ticket sigue asignado a quien lo trabajó.
+- **No registrar los submódulos en Orca** — el trabajo existe en disco, con
+  commits, y el usuario ve solo la tarjeta del wrapper: ni front ni back, y
+  ninguna forma de enterarse de que hay algo ahí. Dar el trabajo por visible
+  porque existe en disco es el error; la visibilidad es el `repo add`.
+- **Crear un worktree estando adentro de uno** — si te despachó un conductor, el
+  worktree del ticket es donde ya estás corriendo. Crear otro te deja el trabajo
+  partido en dos checkouts y dos tarjetas para el mismo ticket.
+- **Preguntar si hay que crear el worktree** — es una verificación (`worktree
+  show --worktree active`), no un gate. Los gates son cinco y están en la tabla
+  de arriba; ninguno es este.
+- **Resolver un gate solo porque el conductor tarda** — el relevo es asincrónico
+  a propósito. Un gate sin respuesta se espera, no se asume.
+- **Salir a mirar los worktrees de al lado** ante una orden ambigua — los
+  hermanos están en el mismo directorio y se pueden listar, pero una frase corta
+  como "eliminamos esto" no trae contexto de a qué se refiere. Es sobre el tuyo,
+  o se pregunta.
 - **Correr `orca` en vez de `orca-ide`** en Linux fuera de una terminal de Orca
   — `orca` es el lector de pantalla de GNOME y arranca a hablar en la máquina
   del usuario. Y si Orca no está disponible, no bloquear: caer a
