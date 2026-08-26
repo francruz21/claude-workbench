@@ -60,6 +60,43 @@ Dos hallazgos que la medición desmiente y que cambian el diseño:
    publicación de la rama, que hace el humano— que puede durar días y de la que
    nadie se hace cargo.
 
+### El espacio en disco: lo que el worktree deja atrás
+
+Medición del mismo día, en la misma máquina:
+
+| | |
+|---|---|
+| Imágenes de tickets vivas | **26 imágenes, 64,0 GB** |
+| Tickets distintos que las dejaron | 14 |
+| Antigüedad de la más vieja | 4 semanas, de un ticket mergeado hace rato |
+| Build cache de Docker | 66,2 GB |
+| Volúmenes huérfanos | 16 de 17 |
+
+Cada ticket construye su par privado de imágenes —`api` de 3,7 a 5,1 GB y
+`front` de 1,42 GB, o sea **5 a 6,5 GB por ticket**— y **nadie las borra nunca**.
+
+Esto reordena la prioridad de la limpieza: borrar el worktree recupera unos
+cientos de MB de código fuente, mientras las imágenes que ese mismo ticket dejó
+atrás pesan veinte veces más. Una limpieza que borra el worktree y deja las
+imágenes no es una limpieza; es lo que produjo los 64 GB.
+
+## El objetivo, en una línea
+
+**Varios hijos trabajando en paralelo, un solo stack levantado.** El paralelismo
+que importa es el del trabajo —leer, implementar, commitear, esperar el CI—, y
+eso no consume containers. Lo único que se serializa es el minuto en que un hijo
+necesita la app corriendo.
+
+| | Hoy | Con este diseño |
+|---|---|---|
+| 4 hijos implementando | 4 stacks, ~5,4 GB y 4 árboles en `virtiofsd` | 4 procesos, ~1,6 GB, **cero containers** |
+| Cuando toca QA | los 4 pueden coincidir | 1 stack, ~1,4 GB |
+| Imágenes que dejan | 4 × ~6 GB, para siempre | 0 al cerrar el ticket |
+
+Un hijo sin stack cuesta ~400 MB. El techo deja de estar en cuántos tickets se
+trabajan a la vez y pasa a estar en cuántos quieren probar al mismo tiempo, que
+es una cola de segundos, no de horas.
+
 ## Decisiones tomadas
 
 | Decisión | Elegido | Descartado y por qué |
@@ -69,6 +106,8 @@ Dos hallazgos que la medición desmiente y que cambian el diseño:
 | Tope de QA simultáneos | Torniquete en 1, fijo | `maxConcurrentStacks` configurable es una perilla que nadie va a mover y una rama más para mantener |
 | Mecanismo del torniquete | Un gate más, concedido por el conductor | Lockfile compartido rompe el aislamiento del hijo y un lock huérfano cuelga la tanda; medir la máquina cada uno deja que dos midan "hay lugar" en el mismo segundo |
 | Borrado del worktree | Al anunciar, sin rastro | Antes no se puede: hasta que los PRs no están verdes puede haber que retocar la rama |
+| Confirmación para borrar | Ninguna: automático si las tres verificaciones pasan | Pedir OK convierte la limpieza en algo que depende de que el usuario esté mirando, y es lo que produjo los 64 GB acumulados |
+| Alcance del borrado | Worktree **y** las imágenes y volúmenes del ticket | Borrar solo el worktree recupera el 5% de lo que ese ticket ocupa |
 | Vigilancia del PR | `Monitor` persistente sobre `gh pr checks` | "Queda a la escucha" sin herramienta es la falla que se está corrigiendo |
 | CI en rojo | Vuelve al hijo con `reply` | Que lo arregle el conductor viola la regla de no editar worktrees ajenos; que lo vea el usuario es el trabajo manual que el conductor viene a absorber |
 
@@ -254,6 +293,43 @@ re-consulta el estado de los PRs de su registro y re-arma los monitores
 perdidos.** Sin esto, cerrar la terminal un viernes significa que el lunes nadie
 anuncia nada.
 
+### 9. La limpieza es automática y completa
+
+Reemplaza la regla actual de `reference/cleanup.md`, que dice textual *"No
+borrar automáticamente, ni aunque las tres verificaciones pasen"*.
+
+**Lo que cambia es la confirmación, no las verificaciones.** El OK del usuario
+nunca fue lo que hacía segura la limpieza: lo que la hace segura es que el
+trabajo ya está en el remoto. Las tres verificaciones —árbol limpio, `@{u}..HEAD`
+vacío, sin stashes de esa rama— siguen siendo condición obligatoria, en el
+wrapper y en **cada** submódulo. Si alguna falla, no se borra nada y se reporta
+qué quedó y dónde, exactamente como hoy.
+
+Lo que se elimina es el turno de espera. Un ticket anunciado, con los PRs verdes
+y las tres verificaciones en orden, se limpia solo. Pedir OK ahí no protege
+nada: el trabajo está publicado y la rama vive en GitHub. Y sí tiene un costo
+medible — es lo que dejó 64 GB de imágenes de 14 tickets, algunas de hace un
+mes, esperando una confirmación que nunca llegó porque nadie estaba mirando.
+
+**Y borra todo lo del ticket, no solo el worktree:**
+
+1. El worktree (`orca-ide worktree rm --worktree id:<id> --force`).
+2. **Las imágenes que ese ticket construyó** — el par `<slug>-api` y
+   `<slug>-front`. Son 5 a 6,5 GB por ticket y son el grueso de lo que se
+   recupera.
+3. **Los volúmenes de su stack**, que `docker compose down` no toca sin `-v`:
+   ahí vive la base de datos del ticket.
+
+El filtro de imágenes y volúmenes se ancla al **slug del worktree**, que es
+único por ticket. Nunca un `prune` global: eso alcanzaría imágenes de tickets
+vivos y de otras sesiones, que es justo lo que la skill ya prohíbe cuando dice
+que un agente no toca lo que no es suyo.
+
+**Lo que sigue sin ser automático**, y sin cambios: no se borra con
+verificaciones en rojo, no se borra un PR `CLOSED` sin `mergedAt` —el trabajo se
+descartó y puede que el usuario quiera rescatar algo—, y no se borra la rama
+remota.
+
 ## Límite conocido
 
 Si la sesión se cierra, los monitores mueren. La regla de re-sincronización los
@@ -281,6 +357,7 @@ registra acá para que la próxima medición no lo redescubra:
 | `skills/conductor/SKILL.md` | Torniquete; fin de la tanda; re-sincronización |
 | `skills/conductor/reference/agents.md` | Sexta precondición; punto 9 del `--spec` |
 | `skills/conductor/reference/discord.md` | Disparo del anuncio desde el evento `GREEN` |
+| `skills/conductor/reference/cleanup.md` | Limpieza automática; borrado de imágenes y volúmenes |
 | `core/config-schema.md` | `qa.stopCommand` y las tres claves de `qa` |
 
 ## Verificación
