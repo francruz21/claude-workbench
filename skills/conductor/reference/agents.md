@@ -533,3 +533,66 @@ monitor existe para que el conductor **se entere** de que algo cambió, y la
 decisión de anunciar sigue siendo del filtro, que está verificado contra datos
 reales. Que el monitor sea más ancho es conservador en la dirección correcta —
 un rojo fuera del gate igual merece la atención del hijo. **No los alinees.**
+
+## Reconciliar una tanda que sobrevivió a la sesión
+
+Si la máquina colapsa o Orca se cierra por error, el registro del conductor
+—que vive en su memoria— desaparece. El trabajo no: los worktrees siguen en
+disco, con sus ramas y sus commits.
+
+**El registro ya está persistido, y es para esto que la skill exige el nombre
+legible al crear:**
+
+```bash
+orca-ide worktree list --json   # displayName, linkedLinearIssue, branch, path, linkedPR
+orca-ide terminal list --json   # worktreeId, handle, connected, orphaned, lastOutputAt
+```
+
+Un worktree con `linkedLinearIssue: "<TICKET-ID>"` y
+`displayName: "<TICKET-ID> · <slug-corto>"` **es** la entrada del registro. Lo
+que falta lo tienen las fuentes que la skill ya consulta: los PRs salen de
+`linkedPR` y de `gh pr list --head <branch>`, y si un ticket ya se anunció lo
+dice su `notifiedLabel`.
+
+**El `worktreeId` y el `displayName` sobreviven; el `handle` no** — es routing y
+cambia si el pane se reinicia. Después de un crash el handle viejo no sirve y
+hay que re-resolverlo por `worktreeId` con `terminal list`. Esa es la razón
+concreta por la que el nombre se exige: es la única dirección que aguanta.
+
+### Antes de crear un worktree o un agente, buscar el ticket
+
+Tres salidas, y **ninguna es "crear de nuevo"**:
+
+| Estado | Qué se hace |
+|---|---|
+| Worktree existe, hijo **vivo** (`connected: true`, `orphaned: false`) | **Reattach.** Re-resolver el handle por `worktreeId` y seguir con `reply`. No se crea nada. |
+| Worktree existe, hijo **muerto** (`orphaned: true` o sin terminal) | **Revivir un agente en ese worktree** con `terminal create`. Nunca `worktree create`. |
+| No hay worktree para ese ticket | Recién ahí, el flujo normal de *Crear y nombrar un agente*. |
+
+Y la que más cuesta: **que un ticket ya tenga worktree no habilita a trabajarlo
+en la sesión del conductor.** Encontrar trabajo a medias no lo convierte en el
+hijo; sigue siendo el error más caro de esta skill, y el crash es justo cuando
+más tienta cometerlo.
+
+### El spec de retoma no es el spec inicial
+
+Un hijo revivido con el spec original vuelve a empezar de cero y pisa lo que ya
+estaba hecho. El de retoma abre pidiéndole que mire dónde quedó:
+
+> Estás retomando un ticket que ya venías trabajando; la sesión anterior se
+> cortó. **Antes de tocar nada**, mirá dónde quedaste: tu rama, tus commits sin
+> pushear, si ya hay PR abierto, y qué dice el último comentario del ticket.
+> Reportá en qué estado está y seguí desde ahí. No rehagas lo que ya está hecho.
+
+Todo lo demás del spec original vale igual, los nueve puntos incluidos.
+
+### Lo que el crash dejó tomado
+
+Un colapso no baja nada limpiamente:
+
+- **Containers arriba de tickets sin hijo vivo** → bajarlos. Es memoria tomada
+  por un stack sin dueño, y es parte de por qué la máquina sigue pesada después
+  de reabrir.
+- **El torniquete queda libre** (`qaTurn: null` en todos). Si el que lo tenía
+  murió, nadie lo tiene — y si no se reinicia, el primer hijo que pida turno
+  espera para siempre.

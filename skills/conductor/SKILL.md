@@ -134,7 +134,8 @@ estilo: es lo que hace que la tanda se pueda seguir desde un solo lugar.
 
 El usuario abre terminales en paralelo, y **una sesión nueva no es este
 conductor**. No hereda la tanda, no comparte el registro `ticket → {name,
-worktreeId, handle, taskId, dispatchId}`, y no sabe qué gates ya se relevaron.
+worktreeId, handle, taskId, dispatchId, qaTurn}`, y no sabe qué gates ya se
+relevaron.
 
 Reglas para una sesión que arranca al lado de otra:
 
@@ -146,8 +147,26 @@ Reglas para una sesión que arranca al lado de otra:
   haga cargo de una tanda que arrancó en otra, lo dice. Recién ahí se reconstruye
   el estado **leyendo Orca y el tracker** (`worktree list`, el estado de las PRs,
   la label de anunciado), nunca de memoria ni adivinando qué hizo la otra sesión.
+- **Una sesión muerta no es una sesión hermana.** La regla de arriba existe para
+  que dos conductores **vivos** no le contesten el mismo gate al mismo hijo ni
+  manden dos anuncios. `connected` y `orphaned` alcanzan para distinguir los dos
+  casos:
+
+  - **Todos los hijos de esos tickets están muertos** → fue un crash: ninguna
+    sesión viva puede estar conduciendo agentes muertos. **Se adopta y se sigue,
+    sin preguntar.**
+  - **Hay hijos vivos que esta sesión no creó** → ahí sí puede haber otra
+    terminal conduciéndolos. **Se pregunta una sola vez** por toda la tanda, no
+    ticket por ticket.
 - **Que exista un worktree en Orca no significa que sea tuyo.** Es la señal de
   que hay trabajo vivo, y con eso alcanza para no pisarlo.
+- **El torniquete es por sesión, así que el registro no alcanza.** Si otra
+  sesión conduce sus propios hijos, su `qaTurn` no está en tu registro y su
+  stack está arriba igual. Por eso, **antes de conceder un turno se mira la
+  máquina, no sólo el registro**: `docker ps` ve los containers de cualquier
+  hijo, sea de esta tanda o de otra. Un turno concedido contra un registro que
+  no ve la mitad de la máquina es exactamente el problema que el torniquete
+  viene a evitar.
 
 ## Qué decide el conductor, y qué te pregunta
 
@@ -283,6 +302,24 @@ comandos y los mensajes exactos.
 Sin orquestación no hay fallback. Sin `ticket-workflow` no se improvisa el flujo
 del ticket.
 
+### 0.5. Reconciliar lo que ya existe
+
+**Corre siempre, antes de la detección**, cuente el usuario o no que hubo un
+crash. Tres pasos:
+
+1. Listar los worktrees y quedarse con los que tienen `linkedLinearIssue`, o
+   `displayName` que matchee `<trackerPrefix>-<n> · `.
+2. Cruzarlos con `terminal list` por `worktreeId` para saber cuáles tienen un
+   hijo vivo.
+3. **Reportar lo encontrado antes de tocar nada.**
+
+Después, por cada ticket: hijo vivo → reattach; hijo muerto → revivir un agente
+**en ese worktree**; sin worktree → el flujo normal del paso 3. Ver
+[`reference/agents.md`](reference/agents.md#reconciliar-una-tanda-que-sobrevivió-a-la-sesión).
+
+**Que un ticket ya tenga worktree no habilita a trabajarlo acá.** Encontrar
+trabajo a medias no convierte al conductor en el hijo.
+
 ### 1. Detección — automático si el usuario los nombró
 
 Parsear lo que pegó el usuario — **uno o varios, el camino es el mismo**:
@@ -414,6 +451,11 @@ Si algo no está limpio, no borrar y decir qué quedó y dónde.
 ## Checklist
 
 - [ ] Se verificaron las seis precondiciones antes de crear nada, incluida la memoria disponible y el swap.
+- [ ] Se reconcilió contra Orca antes de crear nada, y se reportó lo encontrado.
+- [ ] Ningún ticket con worktree vivo recibió un segundo agente.
+- [ ] Ningún ticket con worktree existente se trabajó en la sesión del conductor.
+- [ ] Los hijos revividos recibieron el spec de retoma, no el inicial.
+- [ ] Los containers de tickets sin hijo vivo se bajaron, y el torniquete quedó libre.
 - [ ] Cada ticket se despachó a un hijo con su worktree — ninguno se trabajó en la sesión del conductor, ni siquiera el único de la tanda.
 - [ ] No se preguntó si había que crear el worktree ni el hijo: se creó y se reportó.
 - [ ] Los tickets que el usuario nombró se crearon sin pedir OK, y se reportó qué se creó.
@@ -456,6 +498,15 @@ Si algo no está limpio, no borrar y decir qué quedó y dónde.
 
 ## Errores comunes
 
+- **Crear un segundo worktree o un segundo agente para un ticket que ya tiene el
+  suyo** — duplica agente, stack e imágenes sobre la máquina que acaba de
+  colapsar. Es el resultado más caro de no reconciliar.
+- **Trabajar el ticket en la sesión del conductor porque "el worktree ya está"**
+  — el worktree existente es la razón para retomarlo ahí, no para traérselo.
+- **Revivir un hijo con el spec original** — vuelve a empezar de cero y pisa los
+  commits que ya tenía.
+- **Reconciliar solo cuando el usuario menciona el crash** — es justo lo que no
+  va a hacer: para él, el conductor debería haberse enterado solo.
 - **Ponerse a trabajar el ticket en vez de despacharlo** — es el error más caro,
   porque no se nota: sale trabajo, pero sin worktree propio, sin tarjeta en Orca,
   sin gates relevados y pisando el checkout donde el usuario tiene lo suyo. Un
