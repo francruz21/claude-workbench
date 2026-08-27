@@ -584,8 +584,30 @@ esperar, sin insistir ni preguntar de nuevo si se publica:
 > hecho; la rama no tiene upstream todavía porque eso lo publica quien
 > corresponda. En cuanto exista upstream, sigo con la PR.
 
-No hay nada más que hacer en este paso hasta que el humano publique la rama —
-ver el paso 13 para cómo se detecta eso.
+**Y quedarse escuchando, que no es lo mismo que esperar.** "Esperar" no es una
+acción: un agente que no tiene nada que hacer termina su turno y no vuelve solo.
+Sin un watcher armado, la rama se publica y no pasa nada hasta que alguien
+escribe — que es justo lo que este flujo viene a evitar. Antes de dar el paso
+por terminado, dejar corriendo **en background**:
+
+```bash
+RAMA=$(git branch --show-current)
+until git ls-remote --exit-code --heads origin "$RAMA" >/dev/null 2>&1; do
+  sleep 60
+done
+echo "rama publicada: $RAMA"
+```
+
+Termina solo cuando la rama aparece: no es un loop infinito, es una
+notificación. `git ls-remote` pregunta por el remoto sin traerse objetos y sin
+tocar nada local — no es un `fetch` ni un `push`.
+
+Cuando emite, seguir con el paso 13 **sin que nadie tenga que avisar**. Entre el
+commit y la PR no hay ningún mensaje humano obligatorio, y ese es el punto.
+
+**El watcher muere con la sesión.** Si la sesión se cerró y se reabrió, volver a
+armarlo antes que nada — el paso 13 verifica el estado real de todas formas, así
+que re-armarlo no puede duplicar ni adelantar nada.
 
 ### 12. Comentario en el ticket, con capturas embebidas — automático
 
@@ -631,10 +653,11 @@ git rev-parse --abbrev-ref --symbolic-full-name @{u}
 ```
 
 - **Falla** (`fatal: no upstream configured` o similar) → todavía no se
-  publicó. No es un error ni algo para resolver: **esperar**. No pushear para
-  destrabarlo, no volver a preguntar "¿publico?" — esa pregunta ya se contestó
-  (o se dejó pendiente) en el paso 11. Si el usuario pregunta por el estado,
-  decir que sigue esperando la publicación de la rama.
+  publicó. No es un error ni algo para resolver, y **no se resuelve esperando a
+  que alguien avise**: lo que despierta es el watcher del paso 11. Si sigue
+  armado, no hay nada que hacer; si la sesión se reabrió y se perdió, armarlo de
+  nuevo ahora. No pushear para destrabarlo, y no volver a preguntar "¿publico?"
+  — esa pregunta ya se contestó (o se dejó pendiente) en el paso 11.
 - **Devuelve la rama remota** (ej. `origin/fix/EX-107-...`) → ya está
   publicada. Seguir con la pregunta de abrir la PR (gate 5), como siempre.
 
@@ -707,6 +730,7 @@ config exista ahorra el onboarding, no los gates.
 - [ ] Los cinco gates se le preguntaron a quien despachó el trabajo, y ninguno se resolvió solo.
 - [ ] No se leyó, tocó ni se razonó sobre otro worktree, otra rama u otro ticket que el propio.
 - [ ] No se lanzó ningún subagente: el QA, la exploración y la revisión del diff los hizo esta misma sesión.
+- [ ] Al dejar la rama lista para publicar quedó un watcher armado, y la PR salió cuando la rama apareció en el remoto, sin que nadie avisara.
 
 ## Ejemplos
 
@@ -840,6 +864,10 @@ el comentario final publicado en el ticket con las capturas embebidas.
 - **Ignorar un tag de ambiente en el ticket y usar la `baseBranch` default
   igual** — el tag es una señal explícita por ticket y gana sobre el default
   del repo.
+- **Reportar "listo para publicar" y no dejar nada escuchando** — "esperar" no
+  es una acción: el turno termina y el hijo no vuelve solo. La rama se publica,
+  no pasa nada, y alguien tiene que venir a avisar. Es el mismo agujero que
+  tenía el conductor con el CI: una promesa sin mecanismo.
 
 ## Buenas prácticas
 

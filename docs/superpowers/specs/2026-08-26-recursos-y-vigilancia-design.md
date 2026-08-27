@@ -424,6 +424,50 @@ en pie; lo que se agrega es distinguir la sesión hermana viva de la muerta, y
   haber otra terminal conduciéndolos. **Pregunta una sola vez** por toda la
   tanda, no ticket por ticket.
 
+### 11. El hijo detecta solo que la rama se publicó
+
+El paso 11 de `ticket-workflow` le decía al hijo que reportara "listo para
+publicar" y **esperara, sin insistir**, remitiendo al paso 13 para saber cómo
+se detecta la publicación. Y el paso 13 hacía **una sola vez**
+`git rev-parse --abbrev-ref --symbolic-full-name @{u}`: si fallaba, la
+instrucción era "esperar".
+
+**"Esperar" no es una acción.** Un agente que no tiene nada que hacer termina
+su turno y no vuelve solo. No había ningún watcher, poll ni proceso en
+background en el paso 11 ni en el paso 13. El hijo hacía el chequeo una vez, le
+daba negativo, y quedaba dormido hasta que alguien le escribía — que es
+exactamente lo que este flujo viene a evitar.
+
+**Por qué apareció.** Antes, el hijo pusheaba él mismo: no había nada que
+detectar, porque el propio push era la continuidad — el hijo seguía en el mismo
+turno en el que acababa de publicar. Al sacarle el push (la publicación pasó a
+ser tarea del humano, ver la sección de la prohibición de pushear en
+`ticket-workflow`), quedó un hueco: alguien tiene que enterarse de que la rama
+apareció en el remoto, y ya no hay ningún evento propio que lo dispare.
+
+**El arreglo.** El mismo mecanismo que la sección 6 le dio al conductor para el
+CI: un chequeo en loop, **en background**, que termina solo cuando la condición
+se cumple:
+
+```bash
+RAMA=$(git branch --show-current)
+until git ls-remote --exit-code --heads origin "$RAMA" >/dev/null 2>&1; do
+  sleep 60
+done
+echo "rama publicada: $RAMA"
+```
+
+`git ls-remote` pregunta por el remoto sin traerse objetos y sin tocar nada
+local — no es un `fetch` ni un `push`, y el hijo sigue sin pushear jamás. El
+watcher no habilita ni sugiere que el hijo publique nada; solo observa. Cuando
+emite, el hijo sigue con el paso 13 sin que nadie tenga que avisar.
+
+**Es la misma forma de bug que la sección 6**, y el límite es el mismo: es una
+promesa sin mecanismo, resuelta con un chequeo en background que termina solo
+en vez de una espera pasiva. Y **el watcher muere con la sesión** — si la
+sesión del hijo se cerró y se reabrió, hay que volver a armarlo, igual que el
+límite ya conocido para los monitores de PR de la sección 6.
+
 ## Límite conocido
 
 Si la sesión se cierra, los monitores mueren. La regla de re-sincronización los

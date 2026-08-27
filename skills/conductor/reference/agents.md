@@ -351,7 +351,11 @@ Ventanas rodantes de 15 minutos. Reglas:
   en un estado esperado, no estancado ni muerto.** No hay un push propio que
   vaya a destrabarlo solo, así que ese silencio puede durar horas o días sin
   ser señal de nada roto — el criterio de arriba (terminal vivo en
-  `terminal list`) sigue siendo el único que importa.
+  `terminal list`) sigue siendo el único que importa. Ese hijo **no está
+  dormido**: el paso 11 de su skill le hace armar un watcher sobre el remoto,
+  así que se despierta solo cuando la rama aparece y sigue con la PR sin que el
+  conductor lo toque. Si el conductor lo ve reportar la PR sin haberle mandado
+  nada, eso es el flujo funcionando, no un hijo que se adelantó.
 - **Un hijo esperando turno de QA tampoco está estancado.** Es el conductor el
   que todavía no le contestó, así que su silencio es literalmente lo que el
   torniquete pidió que hiciera.
