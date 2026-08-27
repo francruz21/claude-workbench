@@ -193,12 +193,18 @@ de trabajo (no rebase, no al revés) y verifica que no toquen el modal.
 ## Turno 8 — rama lista para publicar y comentario en el ticket
 
 Con el commit ya hecho, Claude no pushea — nunca lo hace, ni siquiera acá.
-Reporta la rama como lista para publicar, nombrándola, y espera:
+Reporta la rama como lista para publicar, nombrándola:
 
 > **Claude:** Listo para publicar: `fix/EX-107-solucion-error-color-modal`. El
 > commit está hecho; la rama no tiene upstream todavía porque eso lo publica
 > el usuario cuando quiera (Orca la muestra como *Publish Branch*). En cuanto
 > exista upstream, sigo con la PR.
+
+Y no se queda ahí: arma el watcher del paso 11 en background (el bloque con el
+`case` sobre `git ls-remote --exit-code --heads`, apuntado a
+`fix/EX-107-solucion-error-color-modal`) antes de dar el paso por terminado.
+Es lo que hace que "sigo con la PR" sea cierto sin que nadie tenga que venir a
+avisarle.
 
 Como ya hay evidencia del QA, publica el comentario en EX-107 sin esperar a
 que la rama esté publicada — eso puede tardar horas o días y la evidencia ya
@@ -226,7 +232,10 @@ sin que Claude intervenga.)*
 
 ## Turno 9 — PR y revisión (gate 5)
 
-Antes de preguntar nada, Claude verifica si ya hay upstream:
+El watcher del paso 11 es el que se entera primero: apenas la rama aparece en
+el remoto, el loop en background sale con `rama publicada:
+fix/EX-107-solucion-error-color-modal` y Claude retoma el paso 13 solo, sin que
+el usuario le haya escrito nada. Antes de preguntar nada, confirma el upstream:
 
 ```
 git rev-parse --abbrev-ref --symbolic-full-name @{u}

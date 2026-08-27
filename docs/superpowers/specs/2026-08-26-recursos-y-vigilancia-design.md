@@ -451,16 +451,37 @@ se cumple:
 
 ```bash
 RAMA=$(git branch --show-current)
-until git ls-remote --exit-code --heads origin "$RAMA" >/dev/null 2>&1; do
+fallas=0
+while true; do
+  git ls-remote --exit-code --heads origin "$RAMA" >/dev/null 2>&1
+  case $? in
+    0) echo "rama publicada: $RAMA"; break ;;
+    2) fallas=0 ;;                    # todavía no está: es el caso normal
+    *) fallas=$((fallas + 1))
+       if [ "$fallas" -ge 3 ]; then
+         echo "ERROR: git ls-remote no responde ($fallas intentos)"; break
+       fi ;;
+  esac
   sleep 60
 done
-echo "rama publicada: $RAMA"
 ```
 
 `git ls-remote` pregunta por el remoto sin traerse objetos y sin tocar nada
 local — no es un `fetch` ni un `push`, y el hijo sigue sin pushear jamás. El
 watcher no habilita ni sugiere que el hijo publique nada; solo observa. Cuando
 emite, el hijo sigue con el paso 13 sin que nadie tenga que avisar.
+
+**Y hereda el estado `ERROR` de la sección 6, no solo el loop.** La primera
+versión de este watcher trataba "todavía no está publicada" y "el remoto no
+responde" como el mismo caso, porque `git ls-remote` sale con no-cero en los
+dos. Contra el remoto real, los tres desenlaces se distinguen limpio: **0**
+publicada, **2** todavía no, **128** remoto mal configurado, sin red o con
+credenciales vencidas. Tragarse el 128 como si fuera un 2 deja al hijo
+esperando para siempre una rama que nadie va a poder ver — el mismo modo de
+falla que la sección 6 ya nombra para el monitor de CI: *"un monitor que se
+muere en silencio es indistinguible de uno que no tiene nada que decir"*. Tres
+fallas seguidas cortan el loop y lo reportan hacia arriba en vez de seguir
+reintentando mudo.
 
 **Es la misma forma de bug que la sección 6**, y el límite es el mismo: es una
 promesa sin mecanismo, resuelta con un chequeo en background que termina solo

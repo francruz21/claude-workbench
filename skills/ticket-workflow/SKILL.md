@@ -341,8 +341,9 @@ repo (campo `branchNameCI`) para no tener que redescubrirlo cada vez.
    1. Renombrar local con `git branch -m <nombre-nuevo>`. Preserva los cambios
       sin commitear y no toca el remoto.
    2. Reportar que la rama renombrada quedó lista para publicar, nombrándola, y
-      **esperar**. No se pushea la rama nueva ni se borra la vieja: las dos son
-      escrituras al remoto.
+      armar el mismo watcher del paso 11 **apuntado al nombre nuevo** —
+      "esperar" no es una acción acá tampoco. No se pushea la rama nueva ni se
+      borra la vieja: las dos son escrituras al remoto.
    3. Cuando exista upstream para el nombre nuevo, abrir una PR nueva contra la
       rama renombrada — es el gate 5 otra vez, no un trámite.
 
@@ -592,15 +593,32 @@ por terminado, dejar corriendo **en background**:
 
 ```bash
 RAMA=$(git branch --show-current)
-until git ls-remote --exit-code --heads origin "$RAMA" >/dev/null 2>&1; do
+fallas=0
+while true; do
+  git ls-remote --exit-code --heads origin "$RAMA" >/dev/null 2>&1
+  case $? in
+    0) echo "rama publicada: $RAMA"; break ;;
+    2) fallas=0 ;;                    # todavía no está: es el caso normal
+    *) fallas=$((fallas + 1))
+       if [ "$fallas" -ge 3 ]; then
+         echo "ERROR: git ls-remote no responde ($fallas intentos)"; break
+       fi ;;
+  esac
   sleep 60
 done
-echo "rama publicada: $RAMA"
 ```
 
 Termina solo cuando la rama aparece: no es un loop infinito, es una
 notificación. `git ls-remote` pregunta por el remoto sin traerse objetos y sin
 tocar nada local — no es un `fetch` ni un `push`.
+
+**Los tres desenlaces son distintos y ninguno es el silencio.** `git ls-remote`
+sale con **2** cuando la rama todavía no está —el caso normal, se sigue
+esperando— y con **128** cuando el problema es el remoto: mal configurado, sin
+red o con credenciales vencidas. Tragarse el 128 como si fuera un 2 deja al hijo
+esperando para siempre una rama que nadie va a poder ver, y eso se lee igual que
+"todavía no la publicaron". Tres fallas seguidas cortan y lo reportan hacia
+arriba.
 
 Cuando emite, seguir con el paso 13 **sin que nadie tenga que avisar**. Entre el
 commit y la PR no hay ningún mensaje humano obligatorio, y ese es el punto.
@@ -724,7 +742,7 @@ config exista ahorra el onboarding, no los gates.
 - [ ] El comentario del ticket se publicó tras el commit y sin esperar el push, en 3-6 líneas, con las capturas embebidas inline (no como adjuntos al pie).
 - [ ] El comentario arranca en lenguaje de negocio, con una sola línea técnica y sin jerga ni identificadores de código en la parte de negocio.
 - [ ] No se creó ningún ticket, sub-issue ni follow-up; lo que apareció fuera del alcance se reportó y se pidió permiso.
-- [ ] Antes de abrir la PR se verificó que la rama ya tuviera upstream (`@{u}`); si no lo tenía, se esperó sin pushear ni volver a preguntar.
+- [ ] Antes de abrir la PR se verificó que la rama ya tuviera upstream (`@{u}`); si no lo tenía, quedó (o se volvió a armar) el watcher del paso 11 en vez de esperar sin más, sin pushear ni volver a preguntar.
 - [ ] La PR apunta a la rama de nacimiento y no a `main`, y quedó con reviewer asignado en GitHub.
 - [ ] El ticket quedó en `In Review` y la tarjeta de Orca en `in-review`.
 - [ ] Los cinco gates se le preguntaron a quien despachó el trabajo, y ninguno se resolvió solo.
