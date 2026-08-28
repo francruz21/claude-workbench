@@ -105,7 +105,7 @@ después de crear. Es un paso separado y **es fácil de olvidar**: si el usuario
 slugs crudos en las tarjetas, es esto lo que falta.
 
 Vale igual para los submódulos que el agente registra: `repo add` los nombra con
-el nombre del repo (`repo-front`), y el `· front` / `· back` lo pone un
+el nombre del repo (`<nombre-del-submódulo>`), y el `· front` / `· back` lo pone un
 `worktree set` posterior.
 
 El conductor mantiene un registro de la sesión:
@@ -159,8 +159,8 @@ repite porque es justo lo que un agente supervisado se saltea, no porque sea la
 única fuente:
 
 ```bash
-orca-ide repo add --path "<worktree>/repo-front" --json
-orca-ide worktree set --worktree "path:<worktree>/repo-front" \
+orca-ide repo add --path "<worktree>/<submódulo-de-front>" --json
+orca-ide worktree set --worktree "path:<worktree>/<submódulo-de-front>" \
   --display-name "<TICKET-ID> · front" --json
 ```
 
