@@ -186,24 +186,25 @@ puesto, y que si falta el agente descubre a los golpes:
 |---|---|
 | Submódulos sin inicializar | directorios vacíos; `git submodule update --init <los que necesita>` |
 | `.env` del wrapper y de cada submódulo | el compose no levanta |
-| `.env.repo-api` | el compose lo pide en `env_file` y **falla antes de arrancar** |
+| `<archivo-.env-del-servicio-de-API>` | el compose lo pide en `env_file` y **falla antes de arrancar** |
 | Puertos sin desplazar | choca con los stacks que ya corren |
-| `repo-api/jwt/*.key` | gitignoreadas; la API muere con `JwtStrategy requires a secret or key` |
+| `<ruta-de-las-claves-de-firma>` | gitignoreadas; el servicio de API muere en el arranque por falta del secreto de firma |
 
 Y dos cosas que el agente va a tener que resolver igual, así que conviene
 avisarle en el `--spec` en vez de que las descubra:
 
-- **La DB nace sin usuarios.** El compose fuerza `NODE_ENV=development` y ese
-  camino siembra solo hubs y planes. El reseed completo se fuerza con un overlay
-  de compose, que **vive en el scratchpad, nunca en el repo**.
-- **`migrate.mjs` no se bootstrapea en una DB virgen**: falta el esquema donde
-  drizzle lleva su registro y el contenedor entra en crash-loop. Se crea a mano
-  una vez.
+- **La DB nace sin usuarios.** El compose fuerza `<la-variable-de-entorno-de-modo-desarrollo>`
+  y ese camino siembra sólo una parte de las entidades. El reseed completo se
+  fuerza con un overlay de compose, que **vive en el scratchpad, nunca en el
+  repo**.
+- **`<script-de-migraciones>` no se bootstrapea en una DB virgen**: falta el
+  esquema donde `<el-ORM>` lleva su registro y el contenedor entra en
+  crash-loop. Se crea a mano una vez.
 
 El script de puertos del wrapper tiene dos trampas propias: hace `cat >` sobre el
 `.env` (pisa lo que ya estaba) y usa `sed -i ''`, forma BSD que **falla en
-Linux** justo en el paso que reescribe `VITE_API_BASE_URL` del front. Hay que
-re-pegar lo pisado y parchear esa variable a mano.
+Linux** justo en el paso que reescribe `<la-variable-de-URL-de-la-API-del-front>`
+del front. Hay que re-pegar lo pisado y parchear esa variable a mano.
 
 ### Cada agente vive en su worktree y no sabe de los demás
 
