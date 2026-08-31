@@ -89,21 +89,80 @@ Reglas de forma:
 El ticket que te dieron se comenta y se mueve de estado. **Nada más**, y nada
 fuera de él.
 
-- **No se crean tickets.** Ni sub-issues, ni follow-ups, ni un ticket "para lo
-  que quedó pendiente", ni uno para el bug que apareció de paso. Aunque el
-  hallazgo sea real y valga la pena, **se pide permiso primero**: se reporta qué
-  se encontró y se espera. Un ticket que nadie pidió aparece en el board del
-  equipo, entra en la planificación de alguien, y el que lo creó no está para
-  explicarlo.
-- **No se reasigna, no se cambia prioridad, estimación ni labels.** Eso es
-  triage, y el triage lo hace el equipo.
-- **Los dos únicos cambios de estado son los del propio ticket**: a `In Progress`
-  al cortar la rama, y a `In Review` al abrir la PR.
+- **No se crean tickets por cuenta propia.** Ni sub-issues, ni follow-ups, ni un
+  ticket "para lo que quedó pendiente", ni uno para el bug que apareció de paso.
+  Un ticket que nadie pidió aparece en el board del equipo, entra en la
+  planificación de alguien, y el que lo creó no está para explicarlo. Crear uno
+  necesita permiso del usuario — ver *Cuándo sí se crea un ticket*, abajo.
+- **No se edita ningún ticket sin que te lo ordenen.** Reasignar, cambiar
+  prioridad, estimación, labels, título, descripción, due date o parent: nada de
+  eso se toca por iniciativa propia, ni siquiera para corregir algo que está
+  visiblemente mal. Y tampoco se pregunta si conviene tocarlo: eso es triage, y
+  el triage lo hace el equipo — ver *Cuándo sí se edita un ticket*, abajo.
+- **Los cambios de estado del propio ticket son parte del flujo, no una
+  edición**: a `In Progress` al cortar la rama, y a `In Review` al abrir la PR.
+  Esos dos van solos, sin orden y sin preguntar — son el rastro que deja el
+  trabajo, y la regla de edición no los alcanza. Cualquier **otro** estado
+  (`Done`, `Canceled`, `Backlog`, `Blocked`, volver a `Todo`) sí necesita una
+  orden del usuario.
 - **No se tocan otros tickets**, ni para comentar, ni para linkear, ni para
   cerrarlos por duplicado.
 
 Si el trabajo desborda el alcance del ticket, eso es un gate: se reporta y se
 pregunta — nunca se abre trabajo nuevo por cuenta propia.
+
+### Cuándo sí se crea un ticket
+
+La regla no es "nunca": es que **el permiso lo da el usuario**, nunca vos, y
+nunca el hallazgo por sí solo. Hay dos caminos, y ninguno arranca en tu criterio.
+
+**1. Te lo ordenaron.** El usuario pide el ticket, con esas palabras o
+equivalentes ("abrí un ticket para X", "creá el follow-up", "esto va como
+sub-issue de Y"). Ahí se crea: es un pedido, no un hallazgo, y no se pide
+permiso para lo que ya te pidieron. Antes de ejecutarlo se muestra en dos o tres
+líneas **qué** se va a crear —título, resumen, parent si va colgado de otro, y
+en qué equipo— y se espera el OK. Eso confirma el contenido, no el permiso. Si
+te despachó un conductor, la orden tiene que venir del usuario a través de él: el
+conductor **transporta** el permiso, no lo origina.
+
+**2. Apareció algo grave mientras trabajabas.** Grave es acotado, y significa una
+de estas cuatro:
+
+- pérdida o corrupción de datos,
+- un agujero de seguridad o una exposición de datos,
+- algo roto en un ambiente publicado (dev, stage, prod) que ya afecta a otros,
+- un bloqueante que impide terminar el ticket que sí te dieron.
+
+Ahí **se avisa en el momento**, no al cierre: lo urgente es el aviso, no el
+ticket. Se para, se reporta qué se encontró, **por qué** entra en una de esas
+cuatro, y qué pasa si no se atiende. Recién con un sí explícito se crea. Sin
+respuesta no se crea: el silencio no es un sí, y un hallazgo grave sin contestar
+se vuelve a preguntar, no se asume.
+
+**Todo lo demás no llega a esto.** Un bug real pero acotado, deuda técnica, un
+TODO viejo, una mejora obvia, un test que falta: se anota en el reporte de
+cierre y el trabajo sigue. Que el hallazgo sea cierto y valga la pena no es lo
+que habilita a crear el ticket — eso lo habilita el usuario.
+
+### Cuándo sí se edita un ticket
+
+**Solo cuando el usuario te lo ordena.** Acá no hay segundo camino: no existe el
+hallazgo lo bastante grave como para justificar editar un ticket por cuenta
+propia. Si algo está mal —el assignee equivocado, una label que no corresponde,
+una estimación absurda— se **reporta** y se sigue trabajando.
+
+Cuando la orden llega, **se ejecuta y listo**: no se pide permiso para lo que ya
+te pidieron, no se repregunta si estás seguro, no se ofrece una alternativa
+mejor. La orden trae los campos ("asignáselo a X", "subile la prioridad", "sacale
+la label Y"); se aplican esos y nada más. Si algún campo de la orden es ambiguo,
+se pregunta **por ese campo**, no por el permiso.
+
+Sin orden no se edita, y tampoco se pregunta si habría que editar. Ofrecer un
+cambio de triage que nadie pidió es empezar a hacer triage.
+
+Esto **no** incluye los dos pasos de estado del propio ticket (`In Progress` al
+cortar la rama, `In Review` al abrir la PR): esos son el flujo de trabajo, van
+solos, y jamás se frenan a esperar una orden.
 
 ## Requiere
 
@@ -741,7 +800,10 @@ config exista ahorra el onboarding, no los gates.
 - [ ] No se ejecutó ningún `git push`: la rama quedó sin upstream a propósito y se reportó como lista para publicar, nombrándola explícitamente.
 - [ ] El comentario del ticket se publicó tras el commit y sin esperar el push, en 3-6 líneas, con las capturas embebidas inline (no como adjuntos al pie).
 - [ ] El comentario arranca en lenguaje de negocio, con una sola línea técnica y sin jerga ni identificadores de código en la parte de negocio.
-- [ ] No se creó ningún ticket, sub-issue ni follow-up; lo que apareció fuera del alcance se reportó y se pidió permiso.
+- [ ] No se creó ningún ticket, sub-issue ni follow-up sin orden del usuario o sin su sí explícito ante un hallazgo grave; el resto de lo que apareció fuera del alcance se anotó en el reporte de cierre.
+- [ ] Un hallazgo grave (datos, seguridad, ambiente publicado, bloqueante del propio ticket) se avisó en el momento, no al cierre.
+- [ ] No se editó ningún ticket —assignee, prioridad, estimación, labels, título, descripción, due date, parent— sin una orden explícita del usuario, ni se ofreció editarlo.
+- [ ] Los dos pasos de estado del propio ticket (`In Progress` al cortar la rama, `In Review` al abrir la PR) se hicieron solos, sin orden y sin preguntar.
 - [ ] Antes de abrir la PR se verificó que la rama ya tuviera upstream (`@{u}`); si no lo tenía, quedó (o se volvió a armar) el watcher del paso 11 en vez de esperar sin más, sin pushear ni volver a preguntar.
 - [ ] La PR apunta a la rama de nacimiento y no a `main`, y quedó con reviewer asignado en GitHub.
 - [ ] El ticket quedó en `In Review` y la tarjeta de Orca en `in-review`.

@@ -83,13 +83,26 @@ parece necesario, la respuesta es preguntarle al usuario, no hacerlo.
 - **No elige el alcance de un anuncio.** Un pedido elástico ("mis PRs", "los
   últimos") es una pregunta sin hacer, no una licencia para incluir todo lo que
   matchee.
-- **No crea tickets.** Ni él ni los hijos: ni sub-issues, ni follow-ups, ni un
-  ticket para el bug que apareció de paso. Si un hijo reporta trabajo fuera del
-  alcance, eso **sube como reporte** y el usuario decide si se abre algo. Un
-  ticket que nadie pidió entra en la planificación de alguien que no está en esta
-  sesión.
-- **No hace triage**: no reasigna, no cambia prioridad, estimación ni labels de
-  ningún ticket.
+- **No crea tickets por cuenta propia.** Ni él ni los hijos: ni sub-issues, ni
+  follow-ups, ni un ticket para el bug que apareció de paso. Si un hijo reporta
+  trabajo fuera del alcance, eso **sube como reporte** y el usuario decide si se
+  abre algo. Un ticket que nadie pidió entra en la planificación de alguien que
+  no está en esta sesión.
+  **El permiso lo da el usuario y el conductor solo lo transporta**: puede
+  bajarle a un hijo la orden de crear un ticket, pero no puede originarla ni
+  aprobar por su cuenta el pedido de un hijo. Este gate sube siempre, aunque
+  `relayGates` sea `delicate-only`. Y si el hallazgo del hijo es grave —pérdida
+  de datos, seguridad, algo roto en un ambiente publicado, o un bloqueante de su
+  propio ticket— sube **en el momento**, no al cierre de la tanda. Ver *Cuándo sí
+  se crea un ticket* en `ticket-workflow`.
+- **No hace triage por iniciativa propia**: no reasigna, no cambia prioridad,
+  estimación, labels, título ni descripción de ningún ticket. Editar un ticket
+  necesita una orden del usuario, y esa orden se ejecuta sin repreguntar; no hay
+  hallazgo que la reemplace. El conductor tampoco la origina para un hijo: si un
+  hijo ve algo que "habría que corregir" en el tracker, eso **sube como reporte**.
+  Esto no toca los dos pasos de estado que cada hijo hace sobre su propio ticket
+  (`In Progress` al cortar la rama, `In Review` al abrir la PR): esos son el
+  flujo y van solos.
 - **No borra un worktree con cambios sin commitear o commits sin pushear**, ni
   con un `prune` global de Docker. Las tres verificaciones son la condición; la
   confirmación del usuario, no.
@@ -208,6 +221,8 @@ que encuentre vuelve **al hijo** con `reply`, nunca se arregla desde acá.
   ambientes publicados.
 - **El alcance se desborda**: el fix pide cambiar comportamiento que el ticket no
   pidió, o tocar un repo que el ticket no nombra.
+- **Un hijo pide crear un ticket.** Lo autoriza el usuario, no el conductor, sin
+  importar cuán real sea el hallazgo.
 - **Dos caminos viables sin ganador claro.** Una recomendación que no se puede
   defender en una línea no es una recomendación: es una preferencia, y esa la
   elige el usuario.
@@ -486,7 +501,8 @@ Si algo no está limpio, no borrar y decir qué quedó y dónde.
 - [ ] El `--spec` del task le dijo al agente que use `ticket-workflow`, que pregunte los gates con `ask`, que registre en Orca los submódulos que toca, y que deje rastro en el tracker.
 - [ ] Cada ticket de la tanda quedó en `In Progress` al cortarse su rama, no en `Todo` con una rama viva.
 - [ ] Cada agente dejó su comentario en el ticket con las capturas **embebidas**, sin esperar el push, y escrito en lenguaje de negocio.
-- [ ] No se creó ningún ticket: lo que apareció fuera del alcance subió como reporte.
+- [ ] No se creó ningún ticket sin orden del usuario: lo que apareció fuera del alcance subió como reporte, y lo grave subió en el momento en vez de esperar al cierre.
+- [ ] No se editó ningún ticket sin orden del usuario; lo que había que corregir en el tracker subió como reporte.
 - [ ] Las ramas de front y de back se ven en `orca-ide worktree list`, no solo la del wrapper.
 - [ ] Ningún gate se resolvió sin haber leído el diff del hijo y pasarle `code-review`.
 - [ ] Cada gate que el conductor resolvió solo se reportó en una línea, con el criterio.
