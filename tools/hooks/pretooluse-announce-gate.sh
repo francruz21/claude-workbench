@@ -63,7 +63,7 @@ CMD="$(printf '%s' "$PAYLOAD" | jq -r '.tool_input.command // ""' 2>/dev/null ||
 
 # Sin registro para este workspace, esta sesion no esta conduciendo una tanda.
 LEDGER_FILE="$(bash "$LEDGER" path 2>/dev/null || true)"
-[ -n "$LEDGER_FILE" ] && [ -f "$LEDGER_FILE" ] || allow
+if [ -z "$LEDGER_FILE" ] || [ ! -f "$LEDGER_FILE" ]; then allow; fi
 
 notified_label="$(jq -r '.notifiedLabel // ""' \
   "$(git rev-parse --show-toplevel 2>/dev/null)/.claude/workbench.project.json" 2>/dev/null || true)"

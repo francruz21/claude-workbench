@@ -15,6 +15,12 @@
 # Salida: JSON en stdout para las lecturas de maquina, y "brief" en texto
 # compacto para rehidratar una sesion nueva. Nada mas, para que leerlo cueste
 # tokens de una linea y no de una investigacion.
+#
+# Los filtros de jq van en comillas simples a proposito, y por eso este archivo
+# silencia SC2016 entero: el "$t", "$at" y compania de adentro son variables de
+# jq, que entran con --arg. Si el shell las expandiera, el filtro quedaria roto
+# y --arg sin usar. Es lo contrario de lo que SC2016 asume.
+# shellcheck disable=SC2016
 set -euo pipefail
 
 STATE_DIR="${WORKBENCH_STATE_DIR:-$HOME/.claude/workbench/state}"
@@ -143,7 +149,7 @@ case "$cmd" in
   set)
     file="$(ensure_ledger)"
     ticket="${1:-}"; key="${2:-}"; val="${3:-}"
-    [ -n "$ticket" ] && [ -n "$key" ] || die 'uso: set <ticket> <clave> <valor>'
+    if [ -z "$ticket" ] || [ -z "$key" ]; then die 'uso: set <ticket> <clave> <valor>'; fi
     need_ticket "$file" "$ticket"
     write_jq "$file" --arg t "$ticket" --arg at "$(now)" --arg v "$val" \
       "(.tickets[\$t].$key) = \$v | .tickets[\$t].updatedAt = \$at"
@@ -184,7 +190,7 @@ case "$cmd" in
         *) die "opcion desconocida: $1" ;;
       esac
     done
-    [ -n "$repo" ] && [ -n "$number" ] || die 'faltan --repo y --number'
+    if [ -z "$repo" ] || [ -z "$number" ]; then die 'faltan --repo y --number'; fi
     # Idempotente por (repo, number): registrar dos veces el mismo PR duplicaria
     # el monitor y podria disparar dos anuncios del mismo ticket.
     #
@@ -217,7 +223,7 @@ case "$cmd" in
         *) die "opcion desconocida: $1" ;;
       esac
     done
-    [ -n "$number" ] && [ -n "$gate" ] || die 'faltan --number y --gate'
+    if [ -z "$number" ] || [ -z "$gate" ]; then die 'faltan --number y --gate'; fi
     case "$gate" in
       GREEN|RED|PENDING|SINCHECKS|ERROR) : ;;
       *) die "gate invalido: $gate (GREEN|RED|PENDING|SINCHECKS|ERROR)" ;;

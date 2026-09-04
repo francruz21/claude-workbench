@@ -133,10 +133,13 @@ check_repo "$WORKTREE_PATH" "wrapper"
 # submodulo sucio adentro, que es el caso mas probable: el trabajo real pasa
 # en los submodulos.
 if [ -f "$WORKTREE_PATH/.gitmodules" ]; then
+  # El "$sm_path" del foreach lo expande git, no el shell: va en comillas
+  # simples a proposito. El directivo tiene que ir delante del compound
+  # command entero (el while), no adentro.
+  # shellcheck disable=SC2016
   while IFS= read -r sub; do
     [ -n "$sub" ] || continue
     check_repo "$WORKTREE_PATH/$sub" "submodulo $sub"
-    # shellcheck disable=SC2016  # $sm_path lo expande git, no el shell
   done < <(git -C "$WORKTREE_PATH" submodule --quiet foreach 'printf "%s\n" "$sm_path"' 2>/dev/null || true)
 fi
 

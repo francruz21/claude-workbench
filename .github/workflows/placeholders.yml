@@ -16,7 +16,7 @@ jobs:
           # archivo que SI existe y no pasa shellcheck sigue rompiendo el
           # paso.
           files=()
-          for f in tools/*.sh tools/hooks/pre-commit tools/tests/*.sh install.sh; do
+          for f in tools/*.sh tools/hooks/pre-commit tools/hooks/*.sh tools/tests/*.sh install.sh; do
             [ -e "$f" ] && files+=("$f")
           done
           # Si "files" quedara vacio, "shellcheck" sin argumentos imprime el
