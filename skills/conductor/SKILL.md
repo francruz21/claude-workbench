@@ -225,18 +225,64 @@ ese ticket es esas dos líneas y nada más.** No se vuelve a razonar sobre su di
 su QA, sus gates, sus mensajes ni su worktree. Si el usuario pregunta por él, se
 contesta con `brief` o con `get`, no de memoria.
 
-**Cuando el registro no tiene ningún ticket abierto, la tanda terminó y el
-contexto ya no sirve para nada.** Ahí se le dice al usuario, textual:
+### Rotar con hijos vivos
 
-> Tanda cerrada: `<tickets>` anunciados y limpiados. Este contexto ya está
-> gastado (~N tokens). Para el próximo ticket abrí una sesión nueva o corré
-> `/clear`: el registro está en disco, así que arranco leyendo `brief` y no
-> pierdo nada.
+Cerrar un ticket casi nunca deja la tanda vacía: lo normal es cerrar uno y que
+otro siga trabajando. **Y eso no impide rotar.** Un `/clear` con un hijo vivo no
+lo pierde, porque conducir a un hijo no depende del contexto del padre:
 
-No se agarra un ticket nuevo con el contexto de la tanda anterior encima. Es el
-mismo principio que hace que cada ticket vaya a su propio hijo en su propio
-worktree: **empezar limpio no es prolijidad, es la condición para no delirar a
-mitad de camino.**
+| Lo que hace falta para conducirlo | Dónde vive | ¿Sobrevive al `/clear`? |
+|---|---|---|
+| `handle`, `worktreeId`, `taskId`, `dispatchId` | el registro, en disco | **sí** |
+| toda la conversación con ese hijo | Orca: `orchestration check --terminal <h> --all` | **sí** |
+| los gates pendientes | Orca: `orchestration gate-list` | **sí** |
+| el estado de su task | Orca: `orchestration task-list` | **sí** |
+| quién tiene el turno de QA | el registro, y `docker ps` | **sí** |
+| el estado de sus PRs | GitHub: `gh pr checks` | **sí** |
+| los monitores de gate | nada | **no** — y ya se re-arman por diseño |
+| el criterio con el que el padre resolvió un gate | sólo el contexto | **no** — hay que anotarlo |
+
+Las dos últimas filas son todo lo que hay que atender. Los monitores mueren
+igual al cerrar la terminal, así que `/clear` no empeora nada: el bloque
+*Re-sincronizar al volver* ya los re-arma. Y lo que este conductor decidió y no
+escribió en ningún lado se anota antes de rotar, en una línea:
+
+```bash
+$WB/tools/conductor-ledger.sh note <TCK-N> --add "gate 2 resuelto: va sobre el hook que ya existe, no uno nuevo"
+```
+
+La nota está topeada a 200 caracteres y a las últimas 5 por ticket. **Es a
+propósito:** un campo libre sin techo se convierte en un segundo contexto, que es
+exactamente lo que el registro existe para evitar. Si el criterio no entra en una
+línea, no es una nota — es una decisión que tenía que haber ido al hijo con
+`reply`, y ahí es donde queda registrada.
+
+Antes de rotar se verifica que el sucesor pueda retomar:
+
+```bash
+$WB/tools/conductor-ledger.sh handoff
+```
+
+Sale `0` con la receta exacta de retoma —los comandos, con los handles puestos—
+o sale `1` diciendo qué ticket abierto no tiene `handle` o `worktreeId`
+registrado. **Con exit 1 no se rota**: un hijo vivo cuyo handle sólo existe en
+este contexto se queda sin conductor cuando el contexto se va.
+
+### Cuándo decírselo al usuario
+
+Con `handoff` en verde y algún ticket recién cerrado, se le ofrece — no se hace
+solo, porque `/clear` es su sesión:
+
+> **`<TCK-N>` cerrado** (anunciado y limpiado). Quedan `<n>` abiertos:
+> `<tickets>`. Este contexto está en ~N tokens y `<TCK-N>` ya no aporta nada.
+> Si querés, `/clear` y sigo: `handoff` da verde, así que retomo `<tickets>`
+> desde el registro y Orca sin perder nada. Los monitores los re-armo yo.
+
+Si el registro queda **sin ningún ticket abierto**, la tanda terminó y ahí la
+rotación no es una opción sino la recomendación: no se agarra un ticket nuevo con
+el contexto de la tanda anterior encima. Es el mismo principio que hace que cada
+ticket vaya a su propio hijo en su propio worktree: **empezar limpio no es
+prolijidad, es la condición para no delirar a mitad de camino.**
 
 ### Rehidratar una sesión nueva
 
@@ -718,6 +764,9 @@ conductor es la mitad del trabajo hecha.
 - [ ] Cada ticket anunciado y limpiado se cerró con `close`, y el conductor dejó de razonar sobre ese hijo.
 - [ ] La limpieza corrió por `conductor-cleanup.sh`, no a mano turno por turno.
 - [ ] Con el registro sin tickets abiertos, se le dijo al usuario que la tanda cerró y que el próximo ticket arranca en sesión nueva.
+- [ ] Antes de ofrecer una rotación se corrió `handoff`, y con exit 1 no se rotó.
+- [ ] Ningún hijo vivo quedó con su `handle` sólo en el contexto: todos están en el registro.
+- [ ] El criterio de los gates que el conductor resolvió y que no está en ningún `reply` quedó anotado con `note` antes de rotar.
 - [ ] Al volver de un silencio, lo primero fue `brief` — no la memoria de qué PRs había.
 
 ## Errores comunes
@@ -733,6 +782,14 @@ conductor es la mitad del trabajo hecha.
 - **Confundir "borré el hijo" con "liberé contexto"** — borrar el worktree, las
   imágenes y los containers libera disco y RAM, y **cero tokens**. El contexto
   sólo baja con una sesión nueva.
+- **No rotar "porque hay un hijo vivo"** — conducir a un hijo no depende del
+  contexto del padre: los IDs están en el registro y la conversación entera, los
+  gates y el estado de la task están en Orca. Lo que hay que hacer antes es
+  correr `handoff` y anotar lo que no está escrito, no quedarse con la tanda
+  entera encima por las dudas.
+- **Rotar sin correr `handoff`** — el error simétrico. Un hijo vivo cuyo handle
+  sólo existía en el contexto se queda sin conductor, y recuperarlo es cruzar
+  `terminal list` con `worktree list` a mano.
 - **Anunciar porque llegó la hora** — la hora agenda, el gate autoriza. Si a las
   9 el gate está en `pending`, a las 9 no sale nada.
 - **Etiquetar en el mismo paso que se manda el mensaje** — si el envío falló, el

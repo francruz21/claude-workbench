@@ -81,8 +81,39 @@ assert_exit 0 'anunciado y limpiado, se cierra' led close TCK-1
 assert_exit 1 'un ticket cerrado no se puede reabrir con open' led open TCK-1 --slug tck-1-un-slug-largo
 
 # --- el olvido, que es el punto de todo esto -------------------------------
+# --- notas: lo unico que Orca no puede devolver -----------------------------
+assert_exit 2 'note sin --add falla' led note TCK-2
+assert_exit 0 'una nota corta se anota' led note TCK-2 --add 'gate 2 resuelto: va sobre el hook existente'
+assert_contains 'va sobre el hook existente' 'la nota sale en brief' led brief
+assert_exit 1 'una nota de mas de 200 caracteres se rechaza' \
+  led note TCK-2 --add "$(printf 'x%.0s' $(seq 1 201))"
+assert_contains 'no es una nota: es contexto' 'y explica por que' \
+  led note TCK-2 --add "$(printf 'x%.0s' $(seq 1 201))"
+# Se guardan las ultimas 5: un campo libre sin techo es un segundo contexto.
+for i in 1 2 3 4 5 6; do led note TCK-2 --add "nota numero $i" >/dev/null; done
+N_NOTES="$(led get TCK-2 | jq '.notes | length')"
+TESTS_RUN=$((TESTS_RUN + 1))
+if [ "$N_NOTES" = 5 ]; then _pass 'las notas se topean en 5'
+else _fail 'las notas se topean en 5' "hay $N_NOTES"; fi
+assert_not_contains 'nota numero 1' 'la nota mas vieja se descarta' led get TCK-2
+assert_contains 'nota numero 6' 'la mas nueva queda' led get TCK-2
+
+# --- handoff: rotar con hijos vivos ----------------------------------------
+# Es el caso que importa: el conductor cierra un ticket y quiere arrancar
+# limpio, pero otro hijo sigue trabajando. Rotar es seguro solo si el sucesor
+# puede retomarlo, y eso pide handle y worktreeId registrados.
+assert_exit 1 'no se rota con un hijo abierto sin handle registrado' led handoff
+assert_contains 'TCK-2' 'y dice cual falta' led handoff
+assert_contains 'NO todavia' 'y lo dice claro' led handoff
+led child TCK-2 --handle term_def --worktree-id wt_def >/dev/null
+assert_exit 0 'con handle y worktree registrados, se puede rotar' led handoff
+assert_contains 'orchestration check --terminal term_def --all' 'y da la receta de retoma' led handoff
+assert_contains 'no se pierde' 'la receta aclara que los monitores se re-arman' \
+  bash -c "bash '$LEDGER' handoff | tr -d '\n' | grep -o 'monitores de gate: se re-arman' >/dev/null && echo no se pierde"
+assert_contains 'nota numero 6' 'la receta arrastra el criterio anotado' led handoff
+
 CLOSED="$(led get TCK-1)"
-for gone in term_abc wt_xyz task_1 ctx_1 child; do
+for gone in term_abc wt_xyz task_1 ctx_1 child notes; do
   TESTS_RUN=$((TESTS_RUN + 1))
   if printf '%s' "$CLOSED" | grep -qF "$gone"; then
     _fail "close olvida '$gone'" "todavia aparece en la entrada cerrada"

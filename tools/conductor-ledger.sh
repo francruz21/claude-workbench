@@ -85,6 +85,8 @@ uso: conductor-ledger.sh <comando> [args]
   announced <ticket> [--message-url U]   marca el anuncio como enviado y verificado
   labelled <ticket>                      marca puesta la label de anunciado
   cleaned <ticket> [--images N] [--volumes N]
+  note <ticket> --add "<una linea>"      anota criterio que Orca no puede devolver
+  handoff                                verifica si esta sesion puede rotar, y como
   close <ticket>                         colapsa la entrada y OLVIDA todo lo del hijo
   get <ticket>                           JSON de una entrada
   open-tickets                           IDs de los tickets todavia abiertos
@@ -277,6 +279,72 @@ case "$cmd" in
     printf '%s: limpieza registrada\n' "$ticket"
     ;;
 
+  note)
+    file="$(ensure_ledger)"
+    ticket="${1:-}"; [ -n "$ticket" ] || die 'falta el ticket'
+    shift
+    need_ticket "$file" "$ticket"
+    text=""
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --add) text="$2"; shift 2 ;;
+        *) die "opcion desconocida: $1" ;;
+      esac
+    done
+    [ -n "$text" ] || die 'falta --add con el texto de la nota'
+    # Las notas son para lo unico que no se puede recuperar de Orca: el
+    # criterio con el que este conductor resolvio algo. Van acotadas a
+    # proposito -- 200 caracteres y las ultimas 5 -- porque un campo libre sin
+    # limite se convierte en un segundo contexto, que es lo que el registro
+    # existe para evitar.
+    [ "${#text}" -le 200 ] ||
+      die "la nota tiene ${#text} caracteres; el maximo es 200. Si no entra en una linea, no es una nota: es contexto" 1
+    write_jq "$file" --arg t "$ticket" --arg n "$text" --arg at "$(now)" \
+      '.tickets[$t].notes = (((.tickets[$t].notes // []) + [{at: $at, text: $n}]) | .[-5:])
+       | .tickets[$t].updatedAt = $at'
+    printf '%s: nota anotada\n' "$ticket"
+    ;;
+
+  handoff)
+    file="$(ensure_ledger)"
+    # Un conductor puede rotar (sesion nueva o /clear) en cualquier momento,
+    # con hijos vivos incluidos, siempre que el sucesor pueda reconstruir el
+    # estado. Casi todo esta afuera de la sesion: los IDs aca, la conversacion
+    # entera y los gates en Orca, los checks en GitHub. Lo unico que se pierde
+    # es lo que este conductor sepa y no haya escrito. Esto lo verifica.
+    faltan="$(jq -r '
+      [.tickets | to_entries[]
+       | select(.value.state != "closed")
+       | select((.value.child.handle // "") == "" or (.value.child.worktreeId // "") == "")
+       | .key] | join(" ")' < "$file")"
+    printf 'ROTAR ESTA SESION\n\n'
+    if [ -n "$faltan" ]; then
+      printf 'NO todavia. Sin handle o sin worktreeId en el registro: %s\n' "$faltan"
+      printf 'Un hijo vivo sin handle registrado no se puede retomar desde otra sesion:\n'
+      printf 'anotalo con "child <ticket> --handle <h> --worktree-id <id>" y volve a correr esto.\n'
+      exit 1
+    fi
+    n_open="$(jq '[.tickets[] | select(.state != "closed")] | length' < "$file")"
+    printf 'SI. %s ticket(s) abierto(s), todos con handle y worktree en el registro.\n\n' "$n_open"
+    printf 'Lo que el sucesor corre para retomar, sin adivinar nada:\n\n'
+    jq -r --arg me "$0" '
+      "  " + $me + " brief",
+      "",
+      (.tickets | to_entries[] | select(.value.state != "closed")
+       | "  # " + .key + "  (" + .value.slug + ")"
+       + "\n  orca-ide orchestration check --terminal " + (.value.child.handle // "-") + " --all --json"
+       + "\n  orca-ide orchestration gate-list --json"
+       + (if (.value.prs | length) > 0
+          then "\n  gh pr checks " + ([.value.prs[].number | tostring] | join(" ")) + "   # y re-armar el monitor"
+          else "" end)
+       + (if (.value.notes // []) | length > 0
+          then "\n  # criterio anotado:\n" + ([(.value.notes // [])[] | "  #   - " + .text] | join("\n"))
+          else "" end)
+      )' < "$file"
+    printf '\nLo unico que NO sobrevive son los monitores de gate: se re-arman.\n'
+    printf 'Todo lo demas esta en el registro, en Orca o en GitHub.\n'
+    ;;
+
   close)
     file="$(ensure_ledger)"
     ticket="${1:-}"; [ -n "$ticket" ] || die 'falta el ticket'
@@ -333,6 +401,9 @@ case "$cmd" in
           + "  |  label: " + (if .value.labelled then "si" else "no" end)
           + "\n      hijo: handle=" + (.value.child.handle // "-")
           + " worktree=" + (.value.child.worktreeId // "-")
+          + (if ((.value.notes // []) | length) > 0
+             then "\n" + ([(.value.notes // [])[] | "      nota: " + .text] | join("\n"))
+             else "" end)
       ),
       "",
       "CERRADOS  (" + ((.tickets | to_entries | map(select(.value.state == "closed")) | length) | tostring) + ") -- una linea, sin contexto del hijo",
