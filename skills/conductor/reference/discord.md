@@ -11,7 +11,22 @@ manual ni un pedido del usuario. Ver
 ticket pasa a `GREEN`, sale el mensaje de ese ticket.
 
 `SINCHECKS` **no habilita a anunciar**: un PR sin checks corridos no es un PR
-verde.
+verde. Tampoco `PENDING`.
+
+**Una hora pedida por el usuario agenda el anuncio; no autoriza saltear el
+gate.** "Anuncialo a las 9" es *no antes de las 9*, no *a las 9 pase lo que
+pase*. Si llegó la hora y el gate no está en `GREEN`, no sale nada: se avisa con
+el estado del gate y se manda cuando pase a verde. Pasó al revés una vez —el
+mensaje salió a la hora pedida con el gate de tests en `pending`, y quedó verde
+29 minutos después—, y por eso el guarda además está en el registro:
+`conductor-ledger.sh announced` se niega a anotar un anuncio sin todos los PRs en
+`GREEN`.
+
+Y **la label va después del envío verificado**, no después del `Enter`: si el
+mensaje no llegó y la label ya está puesta, ese ticket queda invisible para la
+próxima pasada y nadie lo anuncia nunca. El orden es: confirmar el mensaje en el
+canal → `conductor-ledger.sh announced` → la label → `conductor-ledger.sh
+labelled`.
 
 Una corrida por repo de `config.repos`. El filtro está verificado contra datos
 reales:

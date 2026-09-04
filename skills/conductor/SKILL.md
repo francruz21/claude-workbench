@@ -1,6 +1,6 @@
 ---
 name: conductor
-description: Use cuando el usuario pega uno o más links o IDs de ticket, o dice "trabajá este ticket" — también si es uno solo. Es el único punto de entrada de un ticket: el conductor no lo trabaja, crea sin pedir OK un worktree con su propio agente hijo por ticket y lo pone a trabajarlo con ticket-workflow, le pone un nombre legible y lo reporta. Es también el único interlocutor del usuario: los hijos no le hablan nunca. Resuelve él los gates que tienen una respuesta recomendada — juzgando con la estructura y la arquitectura del código y pasando `code-review` al diff — y solo escala lo delicado. Al arrancar reconcilia lo que ya existe en vez de duplicar hijos. Anuncia en Discord cada ticket en cuanto sus PRs pasan el gate, y cierra el worktree —automáticamente y sin pedir OK, con sus imágenes y volúmenes— en cuanto la PR quedó publicada y anunciada, sin esperar el merge. NO usar si esta sesión ya es un hijo despachado por un conductor, ni para anunciar PRs que no pasaron por este flujo.
+description: Use cuando el usuario pega uno o más links o IDs de ticket, o dice "trabajá este ticket" — también si es uno solo. Es el único punto de entrada de un ticket: el conductor no lo trabaja, crea sin pedir OK un worktree con su propio agente hijo por ticket y lo pone a trabajarlo con ticket-workflow, le pone un nombre legible y lo reporta. Es también el único interlocutor del usuario: los hijos no le hablan nunca. Resuelve él los gates que tienen una respuesta recomendada — juzgando con la estructura y la arquitectura del código y pasando `code-review` al diff — y solo escala lo delicado. Lleva el registro de la tanda en disco, no en el contexto, así que al arrancar reconcilia lo que ya existe en vez de duplicar hijos. Anuncia en Discord cada ticket en cuanto sus PRs pasan el gate —el gate autoriza, el reloj no—, y cierra el worktree —automáticamente y sin pedir OK, con sus imágenes y volúmenes— en cuanto la PR quedó publicada y anunciada, sin esperar el merge. Después de cerrar un ticket se olvida de su hijo y arranca el próximo limpio. NO usar si esta sesión ya es un hijo despachado por un conductor, ni para anunciar PRs que no pasaron por este flujo.
 ---
 
 # Conductor
@@ -38,6 +38,23 @@ agrega es paralelismo y orden.
 - `project.relayGates` — política de relay.
 - `project.orca.wrapperRepoId` — el repo wrapper en Orca.
 
+**Tools del workbench**
+- `tools/conductor-ledger.sh` — el registro de la tanda, en disco. Es lo que
+  permite cerrar un ticket y olvidar al hijo sin perder el rastro del anuncio.
+- `tools/conductor-cleanup.sh` — la fase 6 en un comando.
+- Los dos necesitan `jq`. Sin él, parar y decirlo: el registro a mano vuelve a
+  meter la tanda en el contexto, que es el problema que estos scripts resuelven.
+
+El conductor corre en el workspace del usuario, no en el workbench, así que la
+ruta a los tools se resuelve **una vez por sesión** y se reusa:
+
+```bash
+WB="$(cd "$(readlink -f ~/.claude/skills/conductor)/../.." && pwd)"
+```
+
+Si eso no devuelve un directorio con `tools/` adentro, la skill no está instalada
+por symlink: preguntar la ruta del workbench y recordarla, sin adivinarla.
+
 **Skills**
 - `ticket-workflow` — es la que trabaja cada ticket. Sin ella no se improvisa el
   flujo.
@@ -57,6 +74,20 @@ parece necesario, la respuesta es preguntarle al usuario, no hacerlo.
   trabajo. Lee el ticket para armar el `--spec` y ahí termina su relación con el
   contenido. Si se encontró editando código de un ticket, se equivocó de rol: eso
   es de un hijo, y el hijo hay que crearlo.
+- **No lee el hilo de comentarios de ningún ticket.** Del tracker saca **una
+  sola** consulta: título, descripción y labels, que es todo lo que el `--spec`
+  necesita. Los comentarios son del hijo, que los lee en su paso 2 y devuelve lo
+  que haga falta saber.
+
+  No es una preferencia de estilo, es el ítem más grande que el conductor puede
+  ahorrarse: un `list_comments` de un ticket con hilo largo entró **una vez** y
+  costó **24.000 tokens** — más que todo lo demás de esa sesión junto. El
+  conductor que lo leyó no ganó nada con eso: no implementa, no hace QA, y para
+  decidir un gate lee el diff, no el hilo.
+
+  Si para resolver un gate hace falta algo que está en un comentario, se le pide
+  al hijo con `reply` y él contesta en tres líneas. Preguntarle al hijo cuesta un
+  mensaje; leer el hilo cuesta el 12% de la ventana.
 - **No pushea, no mergea, no aprueba PRs.** Nada de `git push`, `git merge`,
   `gh pr merge`, `gh pr review --approve`. Tampoco los hijos: dejan la rama
   lista para publicar (sin upstream, a propósito) y esperan a que el humano
@@ -145,12 +176,86 @@ estilo: es lo que hace que la tanda se pueda seguir desde un solo lugar.
   sigue valiendo: el hijo razona sobre su worktree y nada más. Pero el flujo no
   depende de que eso pase.
 
+## El registro vive en disco, no en el contexto
+
+El registro `ticket → {name, worktreeId, handle, taskId, dispatchId, qaTurn}` se
+guarda con `tools/conductor-ledger.sh`, no en la memoria de la conversación.
+
+**Por qué.** El contexto es append-only: no baja nunca. Ni cuando el hijo
+termina, ni cuando el worktree se borra, ni cuando las imágenes se van. Borrar al
+hijo libera disco y RAM y **cero tokens**. Así que un conductor que condujo tres
+tickets arrastra los tres para siempre, y para el cuarto ya está diluido —
+contestando a medias, salteándose pasos, y necesitando que el usuario le recuerde
+su propio flujo. Medido en una tanda real: el conductor arrancó en **84.000
+tokens** antes de hacer nada y terminó en **248.000**, sin haber tocado una línea
+de código.
+
+El registro en disco es lo que rompe eso. Lo que el conductor tiene que recordar
+de un ticket cerrado son cuatro datos —qué ticket, qué PRs, cuándo se anunció,
+cuándo se limpió— y eso son dos líneas en un archivo, no 30.000 tokens de
+conversación.
+
+```bash
+$WB/tools/conductor-ledger.sh open TCK-1 --slug <slug> --name "TCK-1 · <titulo corto>"
+$WB/tools/conductor-ledger.sh child TCK-1 --handle <handle> --worktree-id <id>
+$WB/tools/conductor-ledger.sh pr-add TCK-1 --repo OWNER/REPO --number <n> --url <url>
+$WB/tools/conductor-ledger.sh pr-gate TCK-1 --number <n> --gate GREEN
+$WB/tools/conductor-ledger.sh brief          # el estado de la tanda, compacto
+```
+
+El registro **también es un guarda, no sólo un apunte**: `announced` se niega a
+anotar el anuncio si los PRs del ticket no están todos en `GREEN`, y `labelled`
+se niega si no hay anuncio registrado. Un reloj no puede saltear eso.
+
+### Olvidar al hijo
+
+Cuando un ticket quedó anunciado y limpiado, se cierra:
+
+```bash
+$WB/tools/conductor-ledger.sh close TCK-1
+```
+
+`close` colapsa la entrada a una línea y **borra del registro todo lo del hijo**
+—`handle`, `taskId`, `dispatchId`, `worktreeId`, el turno de QA—, porque ya no
+hay hijo a quien mandarle nada. Sobrevive lo que el conductor tiene que poder
+decir dentro de un mes: el ticket, sus PRs, y las dos fechas.
+
+Y entonces el conductor hace lo mismo con su propio contexto: **a partir de ahí
+ese ticket es esas dos líneas y nada más.** No se vuelve a razonar sobre su diff,
+su QA, sus gates, sus mensajes ni su worktree. Si el usuario pregunta por él, se
+contesta con `brief` o con `get`, no de memoria.
+
+**Cuando el registro no tiene ningún ticket abierto, la tanda terminó y el
+contexto ya no sirve para nada.** Ahí se le dice al usuario, textual:
+
+> Tanda cerrada: `<tickets>` anunciados y limpiados. Este contexto ya está
+> gastado (~N tokens). Para el próximo ticket abrí una sesión nueva o corré
+> `/clear`: el registro está en disco, así que arranco leyendo `brief` y no
+> pierdo nada.
+
+No se agarra un ticket nuevo con el contexto de la tanda anterior encima. Es el
+mismo principio que hace que cada ticket vaya a su propio hijo en su propio
+worktree: **empezar limpio no es prolijidad, es la condición para no delirar a
+mitad de camino.**
+
+### Rehidratar una sesión nueva
+
+Una sesión nueva de conductor no reconstruye nada leyendo git, labels y el
+tracker. Arranca con:
+
+```bash
+$WB/tools/conductor-ledger.sh brief
+```
+
+Eso son ~10 líneas. La reconciliación contra Orca del paso 0.5 sigue corriendo
+—el registro dice qué debería haber, Orca dice qué hay— pero ya no es una
+investigación desde cero.
+
 ## Cada sesión es su propia tanda
 
 El usuario abre terminales en paralelo, y **una sesión nueva no es este
-conductor**. No hereda la tanda, no comparte el registro `ticket → {name,
-worktreeId, handle, taskId, dispatchId, qaTurn}`, y no sabe qué gates ya se
-relevaron.
+conductor**. No hereda la tanda ni sabe qué gates ya se relevaron: el registro en
+disco dice qué existe, no quién lo está conduciendo.
 
 Reglas para una sesión que arranca al lado de otra:
 
@@ -160,11 +265,13 @@ Reglas para una sesión que arranca al lado de otra:
   mismo PR mandan dos pings que no se deshacen.
 - **El contexto de una tanda con hijos vivos se pide, no se asume.** Si el
   usuario quiere que esta sesión se haga cargo de una tanda que arrancó en otra y
-  todavía tiene hijos vivos, lo dice. Recién ahí se reconstruye el estado
-  **leyendo Orca y el tracker** (`worktree list`, el estado de las PRs, la label
-  de anunciado), nunca de memoria ni adivinando qué hizo la otra sesión. Si están
-  todos muertos no hay a quién pisar, y aplica el bullet de abajo: se adopta sin
-  preguntar.
+  todavía tiene hijos vivos, lo dice. Recién ahí se reconstruye el estado con
+  `conductor-ledger.sh brief` y se contrasta **contra Orca y el tracker**
+  (`worktree list`, el estado de las PRs, la label de anunciado), nunca de
+  memoria ni adivinando qué hizo la otra sesión. El registro es compartido y está
+  en disco, así que adoptar una tanda dejó de ser una investigación: es leer diez
+  líneas y verificarlas. Si están todos muertos no hay a quién pisar, y aplica el
+  bullet de abajo: se adopta sin preguntar.
 - **Una sesión muerta no es una sesión hermana.** La regla de arriba existe para
   que dos conductores **vivos** no le contesten el mismo gate al mismo hijo ni
   manden dos anuncios. `connected` y `orphaned` alcanzan para distinguir los dos
@@ -293,7 +400,8 @@ stacks en la máquina, que es justo lo que el torniquete existe para evitar.
 ## Cuándo termina la tanda
 
 **La tanda no termina cuando los hijos reportan `worker_done`.** Termina cuando
-**cada** ticket está anunciado y su worktree limpiado.
+**cada** ticket está anunciado, su worktree limpiado, y su entrada cerrada en el
+registro — o sea cuando `conductor-ledger.sh open-tickets` no devuelve nada.
 
 Entre una cosa y la otra hay una espera que puede durar días y que **no depende
 de ningún hijo**: la publicación de la rama, que la hace el humano a mano. Un
@@ -306,9 +414,15 @@ usuario venga a recordarlo.
 Los monitores viven mientras vive la sesión. Así que **al recibir cualquier
 turno del usuario, antes de contestarle**, el conductor:
 
-1. Re-consulta el estado de los PRs de su registro.
-2. Re-arma los monitores que falten.
-3. Menciona lo que cambió mientras no estaba, si cambió algo.
+1. Lee `conductor-ledger.sh brief` para saber qué tickets tiene abiertos.
+2. Re-consulta el estado de los PRs de esa lista y actualiza los gates con
+   `pr-gate`.
+3. Re-arma los monitores que falten.
+4. Menciona lo que cambió mientras no estaba, si cambió algo.
+
+El paso 1 no es de más: el registro es lo único que sobrevive a cerrar la
+terminal. Si el conductor sale a re-consultar "los PRs que recuerda", ya perdió
+los de antes del último silencio largo.
 
 Sin esto, cerrar la terminal un viernes significa que el lunes nadie anuncia
 nada — y el usuario se entera cuando pregunta, que es el síntoma que este bloque
@@ -330,13 +444,17 @@ del ticket.
 ### 0.5. Reconciliar lo que ya existe
 
 **Corre siempre, antes de la detección**, cuente el usuario o no que hubo un
-crash. Tres pasos:
+crash. Cuatro pasos:
 
+0. Leer el registro: `$WB/tools/conductor-ledger.sh brief`. Dice qué **debería**
+   haber, en diez líneas y sin investigar nada. Los pasos que siguen dicen qué
+   hay.
 1. Listar los worktrees y quedarse con los que tienen `linkedLinearIssue`, o
    `displayName` que matchee `<trackerPrefix>-<n> · `.
 2. Cruzarlos con `terminal list` por `worktreeId` para saber cuáles tienen un
    hijo vivo.
-3. **Reportar lo encontrado antes de tocar nada.**
+3. **Reportar lo encontrado antes de tocar nada**, incluido lo que el registro
+   decía y no aparece (y al revés).
 
 Después, por cada ticket: hijo muerto → revivir un agente **en ese worktree**;
 sin worktree → el flujo normal del paso 3. Ver
@@ -412,9 +530,19 @@ Un hijo sin nombre legible deja al usuario sin forma de referirse a él: la
 tarjeta muestra el slug crudo y los gates llegan de un agente anónimo. El
 `--display-name` va en un segundo comando, porque `create` no lo acepta.
 
-Registrar `ticket → {name, worktreeId, handle, taskId, dispatchId, qaTurn}`. El
-nombre es cómo el usuario y el conductor hablan de ese agente; `qaTurn` arranca
-en `null` y es el torniquete del stack — ver *El torniquete de QA*.
+Registrar el ticket **en disco, en el momento de crearlo** — no al final, no
+"cuando haga falta": un hijo despachado que no está en el registro es un hijo que
+se pierde si la terminal se cierra.
+
+```bash
+$WB/tools/conductor-ledger.sh open <TCK-N> --slug <slug> --name "<TCK-N> · <slug-corto>"
+$WB/tools/conductor-ledger.sh child <TCK-N> --handle <handle> --worktree-id <id> \
+    --task-id <taskId> --dispatch-id <dispatchId>
+```
+
+El nombre es cómo el usuario y el conductor hablan de ese agente. El `qaTurn`
+arranca vacío y es el torniquete del stack — ver *El torniquete de QA*; se anota
+con `set <TCK-N> child.qaTurn <valor>`.
 
 El `--spec` tiene que pedirle al agente que **registre en Orca los submódulos que
 toca** (`repo add` + `worktree set --display-name "<TICKET> · front|back"`). Orca
@@ -457,6 +585,30 @@ los PRs de ese ticket están verdes, **el anuncio sale ahí**, sin que el usuari
 lo pida. Cuando emite `RED`, la falla vuelve al hijo. Ver
 [`reference/agents.md`](reference/agents.md#vigilar-el-gate-de-un-pr).
 
+Tres reglas del gate que **no** viven sólo en los reference: si se pierden, se
+anuncia un PR que no pasó los tests.
+
+- **`GREEN` es el único disparador.** No un `worker_done`, no "la PR está
+  abierta", no que el usuario lo recuerde.
+- **`SINCHECKS` y `PENDING` no son verde.** Un PR sin checks terminados no es un
+  PR verde. Se reporta y se espera.
+- **Una hora pedida por el usuario agenda el anuncio; no autoriza saltear el
+  gate.** "Anuncialo a las 9" significa *no antes de las 9*, no *a las 9 pase lo
+  que pase*. Si a esa hora el gate no está en `GREEN`, no sale nada: se avisa que
+  llegó la hora con el gate en `<estado>` y se manda en cuanto pase a verde.
+
+  Esto pasó: el anuncio salió a la hora pedida con el gate de tests en `pending`,
+  y quedó verde 29 minutos después. La hora ganó porque era la instrucción más
+  reciente y el guarda estaba en un archivo que no se había leído. Por eso está
+  acá y por eso `conductor-ledger.sh announced` se niega a registrar un anuncio
+  sin todos los PRs en `GREEN`.
+
+Y **la label va después del envío verificado**, no después del `Enter`. Mandar el
+mensaje y etiquetar en el mismo paso deja el PR marcado como anunciado cuando el
+mensaje no llegó — el ticket queda invisible para la próxima pasada y nadie lo
+anuncia nunca. Se confirma que el mensaje está en el canal, después
+`conductor-ledger.sh announced`, después la label.
+
 Un ticket que se pone verde y nadie anuncia es un PR esperando a que alguien se
 acuerde — y acordarse no es un mecanismo.
 
@@ -473,15 +625,40 @@ al ticket completo.
 Verificar que la mención quedó resuelta antes de enviar. Si no se puede, parar y
 preguntar: un ping falso es peor que no mandar nada.
 
-### 6. Limpieza — automática
+### 6. Limpieza — automática, y en un comando
 
 Detectar los tickets ya publicados y anunciados —**no** se espera el merge, porque
-un worktree vivo por cada ticket en revisión bloquea el ambiente local—, correr
-las tres verificaciones (en el wrapper y en cada submódulo), y con las tres en
-verde borrar el worktree, las imágenes que ese ticket construyó y los volúmenes
-de su stack — y reportarlo. Ver [`reference/cleanup.md`](reference/cleanup.md).
+un worktree vivo por cada ticket en revisión bloquea el ambiente local— y correr:
 
-Si algo no está limpio, no borrar y decir qué quedó y dónde.
+```bash
+$WB/tools/conductor-cleanup.sh --slug <slug-del-worktree> --ticket <TCK-N>
+```
+
+El script hace las tres verificaciones en el wrapper **y en cada submódulo**,
+revisa los containers que hayan quedado, y con todo en verde borra el worktree,
+las imágenes que ese ticket construyó y los volúmenes de su stack. Devuelve una
+línea y un exit code: `0` limpiado, `1` no se tocó nada y dice qué quedó y dónde,
+`2` error de uso. Con `--dry-run` verifica sin borrar.
+
+**Por qué en un script y no a mano.** Hecha a mano esta fase son ~30 turnos de
+Bash *en el contexto del padre*: verificar, mirar containers, medir, borrar,
+reportar. El padre paga en contexto el orden que hace, y esa es exactamente la
+plata que la fase 6 viene a ahorrar. Acá entra un slug y sale una línea.
+
+Las reglas no cambiaron y están en [`reference/cleanup.md`](reference/cleanup.md):
+las tres verificaciones son condición obligatoria, el filtro va anclado al slug
+del ticket, y **nunca** hay un `prune` global. Si algo no está limpio, no se borra
+nada.
+
+Después de limpiar, cerrar el ticket en el registro y olvidar al hijo:
+
+```bash
+$WB/tools/conductor-ledger.sh cleaned <TCK-N> --images <n> --volumes <n>
+$WB/tools/conductor-ledger.sh close <TCK-N>
+```
+
+Ver *Olvidar al hijo*. Un ticket limpiado que sigue vivo en el contexto del
+conductor es la mitad del trabajo hecha.
 
 ## Checklist
 
@@ -518,7 +695,8 @@ Si algo no está limpio, no borrar y decir qué quedó y dónde.
 - [ ] La descripción de cada línea salió del comentario del ticket, no del título del PR.
 - [ ] El anuncio salió solo, sin pedirle OK al usuario, y con el alcance acotado a ese ticket.
 - [ ] Se verificó que la mención quedó resuelta antes de enviar.
-- [ ] La label de anunciado se puso **después** del envío exitoso.
+- [ ] La label de anunciado se puso **después** del envío exitoso, y el envío se verificó en el canal antes de etiquetar.
+- [ ] Ninguna hora pedida por el usuario se tomó como autorización para anunciar con el gate sin terminar.
 - [ ] Cada PR registrado quedó con su monitor de gate armado.
 - [ ] El anuncio salió disparado por el evento `GREEN`, no porque el usuario lo recordara.
 - [ ] Ningún PR en `SINCHECKS` se tomó por verde.
@@ -534,9 +712,35 @@ Si algo no está limpio, no borrar y decir qué quedó y dónde.
 - [ ] Cada ticket anunciado se limpió solo, sin esperar un OK.
 - [ ] La limpieza borró también las imágenes y los volúmenes del ticket, no solo el worktree.
 - [ ] El filtro de imágenes se ancló al slug del ticket; no se corrió ningún `prune` global.
+- [ ] Cada ticket quedó registrado en `conductor-ledger.sh` al despacharlo, no sólo en el contexto.
+- [ ] El conductor no leyó el hilo de comentarios de ningún ticket: del tracker salió una sola consulta, para el `--spec`.
+- [ ] Lo que hacía falta de un comentario se le pidió al hijo con `reply`, no se leyó del tracker.
+- [ ] Cada ticket anunciado y limpiado se cerró con `close`, y el conductor dejó de razonar sobre ese hijo.
+- [ ] La limpieza corrió por `conductor-cleanup.sh`, no a mano turno por turno.
+- [ ] Con el registro sin tickets abiertos, se le dijo al usuario que la tanda cerró y que el próximo ticket arranca en sesión nueva.
+- [ ] Al volver de un silencio, lo primero fue `brief` — no la memoria de qué PRs había.
 
 ## Errores comunes
 
+- **Leer el hilo de comentarios de un ticket "para tener contexto"** — es el
+  gasto más grande que un conductor puede hacer y no le sirve para nada: no
+  implementa, no hace QA, y los gates los decide leyendo el diff. Un hilo largo
+  costó 24.000 tokens en una sola llamada.
+- **Seguir con la tanda anterior encima** — agarrar un ticket nuevo con el
+  contexto de tres tickets cerrados adentro es exactamente lo que produce el
+  conductor que contesta a medias y se saltea su propio flujo. El registro está
+  en disco justamente para poder empezar limpio; hay que usarlo.
+- **Confundir "borré el hijo" con "liberé contexto"** — borrar el worktree, las
+  imágenes y los containers libera disco y RAM, y **cero tokens**. El contexto
+  sólo baja con una sesión nueva.
+- **Anunciar porque llegó la hora** — la hora agenda, el gate autoriza. Si a las
+  9 el gate está en `pending`, a las 9 no sale nada.
+- **Etiquetar en el mismo paso que se manda el mensaje** — si el envío falló, el
+  PR queda marcado como anunciado y nadie lo anuncia nunca. Primero se verifica
+  en el canal.
+- **Correr la fase 6 a mano** — son ~30 turnos de Bash en el contexto del padre
+  para hacer algo que `conductor-cleanup.sh` devuelve en una línea. Limpiar al
+  hijo no debería ensuciar al padre.
 - **Crear un segundo worktree o un segundo agente para un ticket que ya tiene el
   suyo** — duplica agente, stack e imágenes sobre la máquina que acaba de
   colapsar. Es el resultado más caro de no reconciliar.

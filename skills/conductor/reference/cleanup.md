@@ -1,6 +1,24 @@
 # Limpieza — cerrar al publicar y anunciar
 
-Detalle operativo de la fase 6. El principio que ordena todo este archivo: **el
+Detalle operativo de la fase 6.
+
+**Todo lo de este archivo está implementado en
+[`tools/conductor-cleanup.sh`](../../../tools/conductor-cleanup.sh)**, que es la
+forma en que se corre: las tres verificaciones en el wrapper y en cada submódulo,
+el chequeo de containers, y el borrado anclado al slug. Devuelve una línea y un
+exit code (`0` limpiado, `1` nada se tocó, `2` uso o entorno), y con `--dry-run`
+verifica sin borrar.
+
+```bash
+$WB/tools/conductor-cleanup.sh --slug <slug-del-worktree> --ticket <TCK-N>
+```
+
+Lo que sigue es **por qué** cada verificación está ahí. Hay que leerlo cuando el
+script dice que algo quedó sucio y hay que decidir qué hacer, o cuando hay que
+cambiarlo — no para reimplementarlo a mano turno por turno, que es lo que le
+cuesta ~30 turnos de contexto al conductor.
+
+El principio que ordena todo este archivo: **el
 riesgo no es simétrico, pero ningún lado es gratis.** Un worktree borrado de
 menos cuesta el trabajo que tenía adentro; uno de más cuesta entre 5 y 6,5 GB de
 imágenes y un ambiente local bloqueado, y eso acumulado es lo que produjo la
