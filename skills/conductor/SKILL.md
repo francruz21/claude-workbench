@@ -43,14 +43,25 @@ agrega es paralelismo y orden.
   permite cerrar un ticket y olvidar al hijo sin perder el rastro del anuncio.
 - `tools/conductor-cleanup.sh` — la fase 6 en un comando.
 - `tools/hooks/pretooluse-announce-gate.sh` — el hook que deniega el anuncio si
-  el gate no se verificó en vivo. Va en `~/.claude/settings.json`, **como una
-  entrada más** del array `PreToolUse` (no reemplaza a las que ya estén):
+  el gate no se verificó en vivo. Va en `~/.claude/settings.json` como **dos
+  entradas más** del array `PreToolUse`, sin reemplazar a las que ya estén:
 
   ```json
   { "matcher": "Bash",
     "hooks": [{ "type": "command", "timeout": 10,
+                "if": "Bash(gh pr edit *)",
+                "command": "<ruta-del-workbench>/tools/hooks/pretooluse-announce-gate.sh" }] },
+  { "matcher": "Bash",
+    "hooks": [{ "type": "command", "timeout": 10,
+                "if": "Bash(orca-ide *)",
                 "command": "<ruta-del-workbench>/tools/hooks/pretooluse-announce-gate.sh" }] }
   ```
+
+  **El `if` no es decorativo.** Sin él el hook se spawnea en cada comando Bash
+  de cada sesión de la máquina para no hacer nada; con él corre sólo en los dos
+  comandos que puede denegar. Si algún día el anuncio sale por otra vía (un
+  webhook con `curl`, por ejemplo), hay que agregarle su propia entrada — el
+  hook no puede denegar lo que no se le pasa.
 
   Sin el hook el flujo funciona igual, pero el guarda vuelve a depender de que
   el modelo se acuerde — que es exactamente lo que ya falló.
