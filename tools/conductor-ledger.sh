@@ -82,7 +82,10 @@ uso: conductor-ledger.sh <comando> [args]
   child <ticket> [--worktree-id ID] [--handle H] [--task-id T] [--dispatch-id D]
   pr-add <ticket> --repo OWNER/REPO --number N [--url U]
   pr-gate <ticket> --number N --gate GREEN|RED|PENDING|SINCHECKS
-  announced <ticket> [--message-url U]   marca el anuncio como enviado y verificado
+  announce-arm <ticket> [--gate-workflow W] [--ttl S]
+                                         verifica el gate EN VIVO y habilita el envio
+  announce-armed                         (para el hook) 0 si hay un arm vigente
+  announced <ticket> [--message-url U]   marca el anuncio como enviado y consume el arm
   labelled <ticket>                      marca puesta la label de anunciado
   cleaned <ticket> [--images N] [--volumes N]
   note <ticket> --add "<una linea>"      anota criterio que Orca no puede devolver
@@ -184,12 +187,20 @@ case "$cmd" in
     [ -n "$repo" ] && [ -n "$number" ] || die 'faltan --repo y --number'
     # Idempotente por (repo, number): registrar dos veces el mismo PR duplicaria
     # el monitor y podria disparar dos anuncios del mismo ticket.
+    #
+    # Y re-registrarlo **conserva el gate que ya tenia**. Resetearlo a PENDING
+    # seria perder una verificacion real por una operacion que no verifico
+    # nada: el gate solo lo mueve `pr-gate`, que es quien lo mira.
     write_jq "$file" --arg t "$ticket" --arg r "$repo" --argjson n "$number" \
       --arg u "$url" --arg at "$(now)" \
-      '.tickets[$t].prs = (
-         [(.tickets[$t].prs // [])[] | select((.repo != $r) or (.number != $n))]
-         + [{repo: $r, number: $n, url: $u, gate: "PENDING"}]
-       ) | .tickets[$t].updatedAt = $at'
+      '(.tickets[$t].prs // []) as $prev
+       | ([$prev[] | select((.repo == $r) and (.number == $n))] | first) as $ya
+       | .tickets[$t].prs = (
+           [$prev[] | select((.repo != $r) or (.number != $n))]
+           + [{repo: $r, number: $n,
+               url: (if $u == "" then ($ya.url // "") else $u end),
+               gate: ($ya.gate // "PENDING")}]
+         ) | .tickets[$t].updatedAt = $at'
     printf '%s: PR %s#%s registrado\n' "$ticket" "$repo" "$number"
     ;;
 
@@ -218,6 +229,70 @@ case "$cmd" in
     printf '%s: PR #%s -> %s\n' "$ticket" "$number" "$gate"
     ;;
 
+  announce-arm)
+    # El unico camino para habilitar un envio a Discord. Verifica el gate EN
+    # VIVO contra GitHub -- no contra el `pr-gate` anotado, que puede estar
+    # viejo -- y deja un arm que vence. El hook de PreToolUse lee ese arm: sin
+    # arm vigente el envio se deniega, asi que el guarda deja de depender de
+    # que el modelo se acuerde.
+    file="$(ensure_ledger)"
+    ticket="${1:-}"; [ -n "$ticket" ] || die 'falta el ticket'
+    shift
+    need_ticket "$file" "$ticket"
+    gwf=""; ttl=600
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --gate-workflow) gwf="$2"; shift 2 ;;
+        --ttl)           ttl="$2"; shift 2 ;;
+        *) die "opcion desconocida: $1" ;;
+      esac
+    done
+    command -v gh >/dev/null 2>&1 || die 'falta gh: sin el no se puede verificar el gate en vivo'
+    n_prs="$(jq --arg t "$ticket" '.tickets[$t].prs | length' < "$file")"
+    [ "$n_prs" -gt 0 ] || die "$ticket no tiene ningun PR registrado: nada que verificar" 1
+
+    printf 'Verificando el gate en vivo de %s PR(s) de %s...\n' "$n_prs" "$ticket" >&2
+    rojos=""
+    while IFS=$'\t' read -r prepo pnum; do
+      [ -n "$pnum" ] || continue
+      raw="$(gh pr checks "$pnum" --repo "$prepo" --json name,bucket,workflow 2>/dev/null || true)"
+      if [ -z "$raw" ]; then
+        rojos="${rojos} #${pnum}=SINRESPUESTA"
+        continue
+      fi
+      # length==0 se evalua primero: sobre una lista vacia "ninguno sin
+      # terminar" es verdadero, y un PR sin checks corridos se reportaria
+      # verde. Es el error que esta skill ya tiene documentado.
+      estado="$(printf '%s' "$raw" | jq -r --arg w "$gwf" '
+        (if $w == "" then . else [.[] | select((.workflow // "") == $w)] end)
+        | if length == 0 then "SINCHECKS"
+          elif any(.[].bucket; . == "fail" or . == "cancel") then "RED"
+          elif any(.[].bucket; . == "pending") then "PENDING"
+          else "GREEN" end' 2>/dev/null || printf 'ERROR')"
+      $0 pr-gate "$ticket" --number "$pnum" --gate "$estado" >/dev/null 2>&1 || true
+      [ "$estado" = GREEN ] || rojos="${rojos} #${pnum}=${estado}"
+    done < <(jq -r --arg t "$ticket" '.tickets[$t].prs[] | "\(.repo)\t\(.number)"' < "$file")
+
+    if [ -n "$rojos" ]; then
+      printf 'conductor-ledger: %s NO habilitado para anunciar.%s\n' "$ticket" "$rojos" >&2
+      printf 'El gate autoriza, no el reloj: se espera a GREEN y se vuelve a armar.\n' >&2
+      exit 1
+    fi
+    until_epoch=$(( $(date -u +%s) + ttl ))
+    write_jq "$file" --arg t "$ticket" --argjson u "$until_epoch" --arg at "$(now)" \
+      '.armedTicket = $t | .armedUntil = $u
+       | .tickets[$t].updatedAt = $at'
+    printf '%s habilitado para anunciar: todos los PRs en GREEN. El arm vence en %ss.\n' "$ticket" "$ttl"
+    ;;
+
+  announce-armed)
+    # Lo consulta el hook. Silencioso a proposito: solo el exit code importa.
+    file="$(ensure_ledger)"
+    jq -e --argjson now "$(date -u +%s)" \
+      '(.armedUntil // 0) > $now' < "$file" >/dev/null 2>&1 || exit 1
+    jq -r '.armedTicket // ""' < "$file"
+    ;;
+
   announced)
     file="$(ensure_ledger)"
     ticket="${1:-}"; [ -n "$ticket" ] || die 'falta el ticket'
@@ -230,9 +305,9 @@ case "$cmd" in
         *) die "opcion desconocida: $1" ;;
       esac
     done
-    # El anuncio solo se registra con todos los PRs del ticket en GREEN. Es el
-    # mismo guarda que la skill pide y que un reloj no puede saltear: si el
-    # gate no esta verde, no hay nada que anotar.
+    # El gate anotado tiene que estar en GREEN. Es el guarda que la skill pide
+    # y que un reloj no puede saltear: si el gate no esta verde, no hay nada
+    # que anotar.
     if ! jq -e --arg t "$ticket" \
         '(.tickets[$t].prs | length) > 0 and all(.tickets[$t].prs[]; .gate == "GREEN")' \
         < "$file" >/dev/null 2>&1; then
@@ -243,10 +318,25 @@ case "$cmd" in
         < "$file" >&2
       die "$ticket no tiene todos sus PRs en GREEN: no se registra el anuncio" 1
     fi
+    # Y tiene que haber un arm vigente de este ticket. Es lo que cierra el
+    # atajo: anotar el anuncio a mano habilitaria la label sin que nadie
+    # hubiera verificado el gate en vivo, y el hook quedaria mirando un dato
+    # que se escribio solo.
+    armed="$(jq -r --argjson now "$(date -u +%s)" \
+      'if (.armedUntil // 0) > $now then (.armedTicket // "") else "" end' < "$file")"
+    if [ "$armed" != "$ticket" ]; then
+      if [ -z "$armed" ]; then
+        die "$ticket no tiene un arm vigente. Corre \"announce-arm $ticket\" primero: es lo que verifica el gate en vivo contra GitHub." 1
+      fi
+      die "el arm vigente es de $armed, no de $ticket. Un arm habilita el anuncio de un ticket, no de la tanda." 1
+    fi
+    # El arm se consume acá: un anuncio enviado no deja la puerta abierta para
+    # el siguiente. El próximo ticket vuelve a pasar por announce-arm.
     write_jq "$file" --arg t "$ticket" --arg u "$murl" --arg at "$(now)" \
       '.tickets[$t].announced = {at: $at, messageUrl: $u, verified: true}
-       | .tickets[$t].updatedAt = $at'
-    printf '%s: anuncio registrado\n' "$ticket"
+       | .tickets[$t].updatedAt = $at
+       | del(.armedTicket) | del(.armedUntil)'
+    printf '%s: anuncio registrado, arm consumido\n' "$ticket"
     ;;
 
   labelled)

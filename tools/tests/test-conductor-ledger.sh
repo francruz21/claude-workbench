@@ -21,6 +21,19 @@ mkdir -p "$WORKBENCH_WORKSPACE"
 
 led() { bash "$LEDGER" "$@"; }
 
+# announce-arm verifica contra GitHub de verdad, asi que los tests que no van a
+# probar esa verificacion arman el registro a mano.
+arm_a_mano() {
+  LF="$(led path)" TK="$1" python3 -c '
+import json, os, time
+p = os.environ["LF"]
+d = json.load(open(p))
+d["armedTicket"] = os.environ["TK"]
+d["armedUntil"] = int(time.time()) + 600
+json.dump(d, open(p, "w"))
+'
+}
+
 # --- forma y ayuda ---------------------------------------------------------
 assert_contains 'conductor-ledger.sh <comando>' 'sin argumentos imprime el uso' led
 assert_exit 2 'un comando inexistente falla con exit 2' led no-existe
@@ -59,10 +72,16 @@ led pr-add TCK-1 --repo OWNER/REPO --number 377 >/dev/null
 led pr-gate TCK-1 --number 376 --gate GREEN >/dev/null
 assert_exit 1 'un ticket con un PR verde y otro pendiente no se anuncia' led announced TCK-1
 led pr-gate TCK-1 --number 377 --gate GREEN >/dev/null
-assert_exit 0 'con todos los PRs en GREEN el anuncio se registra' led announced TCK-1
+assert_exit 1 'sin arm vigente el anuncio no se registra' led announced TCK-1
+assert_contains 'no tiene un arm vigente' 'y manda a armarlo' led announced TCK-1
+arm_a_mano TCK-1
+assert_exit 0 'con arm vigente y todo en GREEN el anuncio se registra' led announced TCK-1
+assert_exit 1 'y el arm queda consumido' led announce-armed
 
-# pr-add es idempotente: registrar dos veces el mismo PR no lo duplica.
+# pr-add es idempotente: registrar dos veces el mismo PR no lo duplica, y no
+# le pisa el gate ya verificado con un PENDING.
 led pr-add TCK-1 --repo OWNER/REPO --number 377 >/dev/null
+assert_not_contains 'PENDING' 're-registrar un PR no le resetea el gate' led get TCK-1
 TCK1_PRS="$(led get TCK-1 | jq '.prs | length')"
 TESTS_RUN=$((TESTS_RUN + 1))
 if [ "$TCK1_PRS" = 2 ]; then _pass 'pr-add no duplica un PR ya registrado'
@@ -70,6 +89,9 @@ else _fail 'pr-add no duplica un PR ya registrado' "esperaba 2 PRs, hay $TCK1_PR
 
 # --- la label va despues del envio -----------------------------------------
 assert_exit 0 'la label se registra despues del anuncio' led labelled TCK-1
+arm_a_mano TCK-2
+assert_exit 1 'un arm de otro ticket no habilita este' led announced TCK-1
+assert_contains 'el arm vigente es de TCK-2' 'y dice de quien es' led announced TCK-1
 led open TCK-2 --slug tck-2-otro-slug-largo >/dev/null
 assert_exit 1 'la label sin anuncio previo se rechaza' led labelled TCK-2
 assert_contains 'la label va despues del envio' 'y explica el orden' led labelled TCK-2

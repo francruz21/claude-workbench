@@ -42,7 +42,19 @@ agrega es paralelismo y orden.
 - `tools/conductor-ledger.sh` — el registro de la tanda, en disco. Es lo que
   permite cerrar un ticket y olvidar al hijo sin perder el rastro del anuncio.
 - `tools/conductor-cleanup.sh` — la fase 6 en un comando.
-- Los dos necesitan `jq`. Sin él, parar y decirlo: el registro a mano vuelve a
+- `tools/hooks/pretooluse-announce-gate.sh` — el hook que deniega el anuncio si
+  el gate no se verificó en vivo. Va en `~/.claude/settings.json`, **como una
+  entrada más** del array `PreToolUse` (no reemplaza a las que ya estén):
+
+  ```json
+  { "matcher": "Bash",
+    "hooks": [{ "type": "command", "timeout": 10,
+                "command": "<ruta-del-workbench>/tools/hooks/pretooluse-announce-gate.sh" }] }
+  ```
+
+  Sin el hook el flujo funciona igual, pero el guarda vuelve a depender de que
+  el modelo se acuerde — que es exactamente lo que ya falló.
+- Los tres necesitan `jq`. Sin él, parar y decirlo: el registro a mano vuelve a
   meter la tanda en el contexto, que es el problema que estos scripts resuelven.
 
 El conductor corre en el workspace del usuario, no en el workbench, así que la
@@ -652,8 +664,43 @@ anuncia un PR que no pasó los tests.
 Y **la label va después del envío verificado**, no después del `Enter`. Mandar el
 mensaje y etiquetar en el mismo paso deja el PR marcado como anunciado cuando el
 mensaje no llegó — el ticket queda invisible para la próxima pasada y nadie lo
-anuncia nunca. Se confirma que el mensaje está en el canal, después
-`conductor-ledger.sh announced`, después la label.
+anuncia nunca.
+
+### El anuncio pasa por un hook, no por la memoria
+
+Estas reglas ya estaban escritas y se violaron igual, porque una regla en prosa
+se diluye a los 300 turnos y una instrucción del usuario más reciente le gana.
+Así que además están implementadas en
+[`tools/hooks/pretooluse-announce-gate.sh`](../../tools/hooks/pretooluse-announce-gate.sh),
+un hook de `PreToolUse` que **deniega** el envío y la label si el gate no se
+verificó en vivo. El orden es este, y no hay otro:
+
+```bash
+# 1. Verificar el gate EN VIVO contra GitHub. Sin esto el envio esta denegado.
+$WB/tools/conductor-ledger.sh announce-arm <TCK-N> --gate-workflow "<gateWorkflow>"
+
+# 2. Mandar el mensaje al canal. Habilitado por 10 minutos, no más.
+
+# 3. Verificar que el mensaje esta en el canal, y recien ahi:
+$WB/tools/conductor-ledger.sh announced <TCK-N> --message-url <url>
+
+# 4. La label. El hook la deniega si el paso 3 no se hizo.
+gh pr edit <n> --repo OWNER/REPO --add-label <notifiedLabel>
+$WB/tools/conductor-ledger.sh labelled <TCK-N>
+```
+
+`announce-arm` corre `gh pr checks` sobre cada PR registrado, con el guarda de
+`length == 0` puesto —un PR sin checks es `SINCHECKS`, no verde—, actualiza los
+gates y sólo con **todos** en `GREEN` habilita el envío. Si devuelve `PENDING` o
+`SINCHECKS`, eso es la respuesta: se le dice al usuario el estado y se espera.
+
+El arm es **de un ticket y por 10 minutos**, y `announced` lo consume. No se
+puede armar una vez y anunciar la tanda entera, ni dejar la puerta abierta.
+
+**Si el hook deniega algo, no se busca la vuelta.** El motivo que devuelve dice
+qué falta; se hace eso. Reescribir el comando para esquivar el match es
+falsificar el gate, y el gate existe porque ya se anunció un PR con los tests
+sin terminar.
 
 Un ticket que se pone verde y nadie anuncia es un PR esperando a que alguien se
 acuerde — y acordarse no es un mecanismo.
@@ -743,6 +790,8 @@ conductor es la mitad del trabajo hecha.
 - [ ] Se verificó que la mención quedó resuelta antes de enviar.
 - [ ] La label de anunciado se puso **después** del envío exitoso, y el envío se verificó en el canal antes de etiquetar.
 - [ ] Ninguna hora pedida por el usuario se tomó como autorización para anunciar con el gate sin terminar.
+- [ ] El envío pasó por `announce-arm`, que verificó el gate en vivo contra GitHub, no por el `pr-gate` anotado.
+- [ ] Ningún comando se reescribió para esquivar el hook: lo que denegó se resolvió haciendo lo que el motivo pedía.
 - [ ] Cada PR registrado quedó con su monitor de gate armado.
 - [ ] El anuncio salió disparado por el evento `GREEN`, no porque el usuario lo recordara.
 - [ ] Ningún PR en `SINCHECKS` se tomó por verde.
@@ -792,6 +841,9 @@ conductor es la mitad del trabajo hecha.
   `terminal list` con `worktree list` a mano.
 - **Anunciar porque llegó la hora** — la hora agenda, el gate autoriza. Si a las
   9 el gate está en `pending`, a las 9 no sale nada.
+- **Reescribir un comando para esquivar el hook del anuncio** — el hook no es un
+  obstáculo que hay que rodear, es el guarda que reemplaza a la regla que ya se
+  violó una vez. Si deniega, se hace lo que dice el motivo.
 - **Etiquetar en el mismo paso que se manda el mensaje** — si el envío falló, el
   PR queda marcado como anunciado y nadie lo anuncia nunca. Primero se verifica
   en el canal.
