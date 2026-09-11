@@ -142,6 +142,12 @@ y eso pasa cada vez que el ticket quedó abandonado tras un crash o el
 nombre: borrar el worktree dejando el stack arriba deja las imágenes y los
 volúmenes sin dueño y sin forma de anclarlos al slug.
 
+**Las pestañas del navegador también.** Antes de borrar el worktree, cerrar las
+que dejó su QA: `orca-ide tab list --worktree <slug> --json` y `tab close` sobre
+cada una. Un hijo que cerró bien su paso 8 no deja ninguna, pero uno que crasheó
+o que se saltó el cierre sí — y se acumulan sin que nadie las vea hasta que el
+navegador tiene cientos abiertas.
+
 **Por qué las imágenes y no solo el worktree.** El worktree son unos cientos de
 MB de código; el par de imágenes que ese mismo ticket construyó pesa entre 5 y
 6,5 GB. Una limpieza que borra el worktree y deja las imágenes recupera el 5% y

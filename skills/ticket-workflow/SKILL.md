@@ -558,12 +558,21 @@ algo falla) está en [`reference/qa-manual.md`](reference/qa-manual.md).
 El paso 8 **empieza pidiendo turno** y **termina bajando el stack**: un solo
 stack arriba en toda la máquina.
 
+**El QA se hace en el navegador embebido de Orca, dentro del worktree del hijo,
+en UNA sola pestaña, y esa pestaña se cierra al terminar.** Nunca en el navegador
+del usuario: las herramientas `claude-in-chrome` y `playwright` manejan su Chrome
+real — le abren pestañas encima de lo que está haciendo y le rompen las páginas
+que tiene abiertas. Las excusas frecuentes y su respuesta están en
+[`reference/qa-manual.md`](reference/qa-manual.md).
+
 En resumen:
 
 1. **Pedir turno de QA y esperar a que lo concedan** (sin conductor: medir
    memoria disponible y swap antes de levantar nada).
 2. Levantar la app local con el `qa.startCommand` del config, en background.
-3. Abrir el navegador embebido de Orca en `qa.url` y esperar que cargue.
+3. Abrir `qa.url` en el navegador embebido de Orca, **reusando la pestaña que
+   ya exista** (`orca-ide tab list`) en vez de crear una nueva, y esperar que
+   cargue.
 4. Loguearse con el usuario o rol que pida el ticket (paso 2). Los usuarios
    salen de los seeds/fixtures del repo; si no hay ninguno usable, **pararse y
    pedirlo** en vez de inventar credenciales o dar el QA por hecho.
@@ -575,8 +584,9 @@ En resumen:
    estado anterior.
 7. Presentarle al usuario la lista de casos con su resultado y las capturas, y
    **esperar su OK explícito**.
-8. **Con el gate 3 resuelto, bajar el stack, verificar que los containers
-   bajaron y devolver el turno.**
+8. **Con el gate 3 resuelto, cerrar la pestaña del QA, bajar el stack, verificar
+   que los containers bajaron y devolver el turno.** Una pestaña que queda
+   abierta consume recursos igual que un container que queda arriba.
 
 **Este paso es el punto de control del flujo.** Sin OK del usuario no se
 commitea. Si un caso falla, volver al paso 7 y arreglarlo — no seguir con un
@@ -793,8 +803,9 @@ config exista ahorra el onboarding, no los gates.
 - [ ] El ticket se movió a `In Progress` y la tarjeta de Orca a `in-progress` al crear la rama.
 - [ ] Con conductor: se pidió turno de QA antes de levantar el stack y se esperó a que lo concedieran. Sin conductor: se midió la memoria disponible y el swap antes de levantar.
 - [ ] Se ejecutaron los casos de prueba en el navegador, con el usuario/rol que pedía el ticket, y se capturó una screenshot por caso del estado implementado.
+- [ ] El QA corrió en el navegador embebido de Orca, en una sola pestaña reusada — no en el Chrome del usuario ni con `claude-in-chrome`/`playwright`.
 - [ ] El usuario dio el OK explícito del QA antes de commitear.
-- [ ] El stack se bajó al resolverse el gate 3, verificando que los containers efectivamente bajaron — y, si había conductor, se le devolvió el turno.
+- [ ] Al resolverse el gate 3 se cerró la pestaña del QA y se bajó el stack, verificando que los containers efectivamente bajaron — y, si había conductor, se le devolvió el turno.
 - [ ] Antes del commit se verificó que la rama estuviera al día con su base, y si no, se mergeó la base dentro de la rama de trabajo.
 - [ ] El commit se propuso y se confirmó explícitamente antes de ejecutarse.
 - [ ] No se ejecutó ningún `git push`: la rama quedó sin upstream a propósito y se reportó como lista para publicar, nombrándola explícitamente.
