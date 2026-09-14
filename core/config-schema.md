@@ -125,11 +125,18 @@ bajan desde la capa de usuario (ver la seccion siguiente).
 | `typeLabelMap` | object | mapeo de tipo de rama a label |
 | `commitConvention` | string | convencion de mensajes de commit |
 | `branchPattern` | string | patron de nombre de rama |
-| `branchNameCI` | boolean | si CI valida el nombre de rama contra `branchPattern` |
+| `branchNameCI` | object | el objeto que agrupa las cuatro claves de abajo; no se declara solo |
+| `branchNameCI.exists` | boolean | si el repo valida el nombre de rama por CI |
+| `branchNameCI.pattern` | string | el regex exacto que el CI aplica. No es `branchPattern`: ese es el molde de armado, este es el juez |
+| `branchNameCI.workflows` | string[] | archivos de workflow donde vive esa validacion |
+| `branchNameCI.job` | string | nombre del job que la corre |
 | `orca.repoId` | string | id del repo en Orca |
 | `orca.useWorktrees` | boolean | si este proyecto usa worktrees de Orca |
 | `orca.worktreeLevel` | string | nivel de anidamiento de los worktrees |
-| `reviewers` | string[] | reviewers por defecto de este proyecto |
+| `reviewers` | object | el objeto que agrupa las tres claves de abajo; no se declara solo |
+| `reviewers.default` | string | handle que se asigna como reviewer de la PR sin preguntar |
+| `reviewers.options` | string[] | handles entre los que se elige cuando se pregunta |
+| `reviewers.askEveryTime` | boolean | si se pregunta el reviewer en cada PR en vez de usar `default` |
 | `qa` | object | el objeto que agrupa las tres claves de abajo; no se declara solo |
 | `qa.startCommand` | string | comando que levanta la app local para el QA del paso 8 |
 | `qa.stopCommand` | string | comando que la baja y libera los puertos, al cerrarse el paso 8 |
@@ -176,14 +183,23 @@ no exige tocar nada compartido.
   "typeLabelMap": { "feature": "<label-de-tipo>" },
   "commitConvention": "conventional-commits",
   "branchPattern": "<tipo>/<id-de-ticket>-<slug>",
-  "branchNameCI": true,
+  "branchNameCI": {
+    "exists": true,
+    "pattern": "<regex-que-aplica-el-ci>",
+    "workflows": ["<archivo-de-workflow>"],
+    "job": "<nombre-del-job>"
+  },
   "orca": {
     "repoId": "<id-de-repo-en-orca>",
     "useWorktrees": true,
     "worktreeLevel": "<nivel>",
     "wrapperRepoId": "<id-del-repo-wrapper>"
   },
-  "reviewers": ["<handle-reviewer>"],
+  "reviewers": {
+    "default": "<handle-reviewer>",
+    "options": ["<handle-reviewer>"],
+    "askEveryTime": false
+  },
   "qa": {
     "startCommand": "<comando-que-levanta-la-app>",
     "stopCommand": "<comando-que-la-baja>",
