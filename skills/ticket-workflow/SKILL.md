@@ -1,6 +1,6 @@
 ---
 name: ticket-workflow
-description: Use cuando ya hay un ticket concreto que trabajar acá: leerlo, cortar la rama, implementar, probar en el navegador, commitear y dejar el trabajo listo para publicar. Es la skill del **hijo**: normalmente la invoca el agente que el conductor despachó en el worktree de ese ticket, y ahí el interlocutor de los cinco gates es quien lo despachó, no el usuario. Si el usuario pega un link o ID de ticket en una sesión que no es un hijo despachado, el punto de entrada es `conductor` — él crea el worktree y el hijo, y esta skill corre adentro. NO aplica para crear ramas sin relación a un ticket, ni para abrir la PR de un trabajo que no pasó por acá (ver playbook create-pr).
+description: Use cuando ya hay un ticket concreto que trabajar acá: leerlo, cortar la rama, implementar, probar en el navegador, commitear, publicar la rama (o dejarla lista para publicar, según `choices.publish`), abrir la PR y arreglar lo que vuelva del review. Es la skill del **hijo**: normalmente la invoca el agente que el conductor despachó en el worktree de ese ticket, y ahí el interlocutor de los cinco gates es quien lo despachó, no el usuario. Si el usuario pega un link o ID de ticket en una sesión que no es un hijo despachado, el punto de entrada es `conductor` — él crea el worktree y el hijo, y esta skill corre adentro. NO aplica para crear ramas sin relación a un ticket, ni para abrir la PR de un trabajo que no pasó por acá (ver playbook create-pr).
 ---
 
 # Ticket Workflow
@@ -13,8 +13,10 @@ listo para publicar — y, una vez que el humano publica la rama, comentado en
 el ticket y con su PR abierta y asignada a revisión — siguiendo siempre la
 convención de ramas y commits específica del repo donde se trabaja, sin volver a
 preguntar lo ya configurado, sin commitear nunca sin confirmación explícita, y
-sin pushear nunca: publicar la rama es decisión del humano, no de quien trabaja
-el ticket.
+sin escribir nunca en el remoto más de lo que habilita `choices.publish`: con
+`"human"` publicar la rama es decisión del humano; con `"agent"` quien trabaja
+el ticket publica **su propia rama** con `tools/publish-branch.sh` y nada más —
+nunca un push a otra rama, nunca force, nunca un merge ni una aprobación.
 
 ## Dónde corre esta skill, y con quién habla
 
@@ -171,6 +173,9 @@ solos, y jamás se frenan a esperar una orden.
   `git checkout -b` en el checkout actual y se avisa en una línea.
 - `capabilities.gh` — para resolver los handles de reviewers desde
   `gh api repos/<owner>/<repo>/collaborators`.
+- `capabilities.publish` — `choices.publish`: quién publica la rama en el paso
+  11 (`"human"` o `"agent"`). Con `"agent"`, también `jq` y el hook
+  `tools/hooks/pretooluse-git-gate.sh` registrado a nivel usuario.
 
 **Config**
 - `project.trackerPrefix` — prefijo del tracker de este repo.
@@ -395,14 +400,16 @@ repo (campo `branchNameCI`) para no tener que redescubrirlo cada vez.
    actualizar su head.
 
    El reparto es el mismo que en el resto del flujo: lo local es de quien
-   trabaja el ticket, lo que escribe en el remoto es del humano.
+   trabaja el ticket, lo que escribe en el remoto es del humano — salvo
+   publicar la rama nueva cuando `choices.publish` es `"agent"` (paso 11).
+   Borrar la rama vieja del remoto es del humano siempre.
 
    1. Renombrar local con `git branch -m <nombre-nuevo>`. Preserva los cambios
       sin commitear y no toca el remoto.
-   2. Reportar que la rama renombrada quedó lista para publicar, nombrándola, y
-      armar el mismo watcher del paso 11 **apuntado al nombre nuevo** —
-      "esperar" no es una acción acá tampoco. No se pushea la rama nueva ni se
-      borra la vieja: las dos son escrituras al remoto.
+   2. Publicar la rama renombrada como en el paso 11: con `"agent"`, con
+      `publish-branch.sh`; con `"human"`, reportarla lista para publicar y
+      armar el mismo watcher **apuntado al nombre nuevo** — "esperar" no es
+      una acción acá tampoco. La rama vieja del remoto no se borra.
    3. Cuando exista upstream para el nombre nuevo, abrir una PR nueva contra la
       rama renombrada — es el gate 5 otra vez, no un trámite.
 
@@ -638,13 +645,36 @@ descubierta en el repo) y mostrarlo al usuario antes de commitear. Ejemplo:
 Nunca ejecutar `git commit` sin una confirmación explícita en el turno actual,
 y nunca antes del OK del QA del paso 8.
 
-### 11. Rama lista para publicar — sin push
+### 11. Publicar la rama — según `choices.publish`
 
-El commit del paso 10 ya está hecho. Esto **no es un paso de push**: publicar
-la rama no es tarea de quien trabaja el ticket, es del humano. Nunca se
-ejecuta `git push`, ni `git push -u`, ni ninguna variante, ni siquiera contra
-la rama de trabajo — eso no cambió por sacar el push de acá, nunca fue
-tarea de este flujo publicar nada al remoto.
+El commit del paso 10 ya está hecho. Quién publica la rama lo dice
+`choices.publish` en `capabilities.json`. Si falta, se pregunta una vez y se
+guarda (ver `core/resolve.md`); no se asume ninguno de los dos.
+
+**Con `"agent"` — la publica quien trabaja el ticket, por una sola puerta:**
+
+```bash
+WB="$(cd "$(readlink -f ~/.claude/skills/ticket-workflow)/../.." && pwd)"
+"$WB/tools/publish-branch.sh" -C <repo>
+```
+
+No es un gate nuevo: quedó autorizado con el commit del paso 10. El script no
+recibe rama ni refspec — empuja HEAD a una rama del mismo nombre — y rechaza
+una rama de ambiente, una que no cumple `branchNameCI.pattern`, cualquier cosa
+que necesite force, y una rama del remoto que no publicó este flujo. **Nunca
+`git push` directo**, ni siquiera a la rama propia: el hook `git-gate` lo
+deniega, y buscarle la vuelta (`bash -c`, `gh api`, otro remoto) es
+exactamente lo que este diseño prohíbe. Si el script rechaza, se reporta el
+motivo tal cual hacia arriba; no se renombra la rama ni se fuerza nada para
+pasarlo.
+
+Sale con la rama publicada y medida contra el remoto (`ls-remote`, no `@{u}`).
+Seguir con el paso 12 y el 13 en el mismo turno: no hay watcher que armar.
+En un workspace con varios repos, correrlo una vez por repo tocado.
+
+**Con `"human"` — la publica el humano, y esto no es un paso de push.** Nunca
+se ejecuta `git push`, ni `git push -u`, ni `publish-branch.sh`, ni ninguna
+variante, ni siquiera contra la rama de trabajo.
 
 La rama se deja **sin upstream, a propósito**: es justo lo que en Orca se ve
 como *Publish Branch*. Reportarlo nombrando la rama de trabajo explícita y
@@ -740,7 +770,8 @@ git rev-parse --abbrev-ref --symbolic-full-name @{u}
 ```
 
 - **Falla** (`fatal: no upstream configured` o similar) → todavía no se
-  publicó. No es un error ni algo para resolver, y **no se resuelve esperando a
+  publicó. Con `"agent"` es que el paso 11 no corrió o rechazó: volver ahí.
+  Con `"human"`: No es un error ni algo para resolver, y **no se resuelve esperando a
   que alguien avise**: lo que despierta es el watcher del paso 11. Si sigue
   armado, no hay nada que hacer; si la sesión se reabrió y se perdió, armarlo de
   nuevo ahora. No pushear para destrabarlo, y no volver a preguntar "¿publico?"
@@ -776,14 +807,37 @@ confirma:
 Si el usuario no quiere abrir la PR, dejar la tarea cerrada en el paso 12 y no
 mover el estado a `In Review`.
 
+### 13b. Arreglos del review sobre la PR publicada — solo con `"agent"`
+
+Con la PR abierta, lo que vuelve —el CI en rojo sobre el SHA de la PR, un
+`claude-review` con cambios pedidos, o el review del tech lead que el
+conductor pasa textual— se arregla **en la misma rama y la misma PR**:
+
+1. Arreglar. Si la rama base se movió, traerla con merge como en el paso 9,
+   nunca con rebase: la rama ya está publicada.
+2. Si el arreglo cambia algo que se probó en el paso 8, repetir esos casos.
+3. Commit, con el gate 4 como siempre.
+4. `publish-branch.sh` otra vez. Empuja solo si es fast-forward sobre lo
+   publicado; si no, para, y no se fuerza.
+5. Esperar el job de tests **del SHA nuevo**, no el rollup de la PR, y
+   reportar el resultado hacia arriba. El anuncio no es de este flujo: con
+   conductor, lo decide él.
+
+**Tope: tres rondas.** Si a la tercera sigue en rojo, se para y se escala con
+el job, el error y lo que se intentó. Una rama nueva o una PR nueva para
+"empezar limpio" no es un arreglo: es perder el historial del review.
+
+Con `"human"` es igual salvo el punto 4: la rama queda con commits sin
+publicar y se reporta, nombrándola, para que el humano la empuje.
+
 ### 14. Segunda vez en adelante
 
 Si el config ya existe para este repo, saltar directo del paso 2 al 4 (no se
 repite el onboarding). Los únicos puntos que siempre requieren intervención del
 usuario son los cinco gates: el tipo de rama (paso 4), **el OK del cráneo
 (paso 6)**, **el OK del QA (paso 8)**, la confirmación de commit (paso 10) y la
-confirmación de PR (paso 13). El paso 11 no es un gate: no hay push que
-confirmar, la rama queda lista para publicar y se espera al humano. Que el
+confirmación de PR (paso 13). El paso 11 no es un gate: con `"agent"` lo
+autoriza el commit, y con `"human"` no hay push que confirmar. Que el
 config exista ahorra el onboarding, no los gates.
 
 ## Checklist
@@ -808,7 +862,7 @@ config exista ahorra el onboarding, no los gates.
 - [ ] Al resolverse el gate 3 se cerró la pestaña del QA y se bajó el stack, verificando que los containers efectivamente bajaron — y, si había conductor, se le devolvió el turno.
 - [ ] Antes del commit se verificó que la rama estuviera al día con su base, y si no, se mergeó la base dentro de la rama de trabajo.
 - [ ] El commit se propuso y se confirmó explícitamente antes de ejecutarse.
-- [ ] No se ejecutó ningún `git push`: la rama quedó sin upstream a propósito y se reportó como lista para publicar, nombrándola explícitamente.
+- [ ] No se ejecutó ningún `git push` directo. Con `"agent"`, la rama se publicó con `publish-branch.sh` y quedó medida contra el remoto; con `"human"`, quedó sin upstream a propósito y se reportó como lista para publicar, nombrándola.
 - [ ] El comentario del ticket se publicó tras el commit y sin esperar el push, en 3-6 líneas, con las capturas embebidas inline (no como adjuntos al pie).
 - [ ] El comentario arranca en lenguaje de negocio, con una sola línea técnica y sin jerga ni identificadores de código en la parte de negocio.
 - [ ] No se creó ningún ticket, sub-issue ni follow-up sin orden del usuario o sin su sí explícito ante un hallazgo grave; el resto de lo que apareció fuera del alcance se anotó en el reporte de cierre.
@@ -821,7 +875,8 @@ config exista ahorra el onboarding, no los gates.
 - [ ] Los cinco gates se le preguntaron a quien despachó el trabajo, y ninguno se resolvió solo.
 - [ ] No se leyó, tocó ni se razonó sobre otro worktree, otra rama u otro ticket que el propio.
 - [ ] No se lanzó ningún subagente: el QA, la exploración y la revisión del diff los hizo esta misma sesión.
-- [ ] Al dejar la rama lista para publicar quedó un watcher armado, y la PR salió cuando la rama apareció en el remoto, sin que nadie avisara.
+- [ ] Con `"human"`, al dejar la rama lista para publicar quedó un watcher armado, y la PR salió cuando la rama apareció en el remoto, sin que nadie avisara.
+- [ ] Los arreglos del review fueron a la misma rama y la misma PR, sin force, y se esperó el job del SHA nuevo.
 
 ## Ejemplos
 
@@ -917,12 +972,14 @@ el comentario final publicado en el ticket con las capturas embebidas.
   configurada.
 - **Commitear sin decirlo explícitamente en el turno** — una confirmación de
   una tarea anterior no cuenta para la tarea actual.
-- **Pushear, en cualquier forma y contra cualquier rama** — no es que haga
-  falta pedir confirmación antes de hacerlo: no es tarea de quien trabaja el
-  ticket, nunca. Publicar la rama es del humano; y el riesgo de antes no
-  desapareció, solo cambió de manos — si el humano publica asumiendo que la
-  rama de trabajo ya "es" la base, sigue siendo pushear contra `dev` por
-  error. Avisarlo si se detecta, pero no es algo que este flujo ejecute.
+- **`git push` directo, en cualquier forma y contra cualquier rama** — ni con
+  `"agent"`: la única puerta es `publish-branch.sh`, que valida lo que un push
+  a mano no valida. Con `"human"` no se publica nada, tampoco por el script. Y
+  si el humano publica asumiendo que la rama de trabajo ya "es" la base, sigue
+  siendo pushear contra `dev` por error: avisarlo si se detecta.
+- **Buscarle la vuelta a un rechazo de `publish-branch.sh`** — renombrar la
+  rama para que pase el patrón, crear otra para esquivar la de un compañero, o
+  resetear para que el remoto "quede atrás". El rechazo se reporta tal cual.
 - **Inventar el prefijo del workspace** a partir del nombre de la empresa en
   vez del ID real del ticket (ej. asumir `EXAMPLE-107` cuando el ID real es
   `EX-107`).
@@ -941,21 +998,20 @@ el comentario final publicado en el ticket con las capturas embebidas.
 - **Renombrar una rama remota con PR abierta usando el endpoint de rename de
   GitHub** (`branches/{branch}/rename`) — borra el ref viejo y GitHub cierra
   la PR automáticamente (`head_ref_deleted`) en vez de re-apuntarla. Para
-  corregir un nombre de rama con PR ya abierta: rename local, reportar como
-  lista para publicar, y PR nueva cuando el humano publicó el nombre nuevo. El
-  push de la rama renombrada y el borrado de la vieja **no** son de quien
-  trabaja el ticket, igual que en el paso 11.
+  corregir un nombre de rama con PR ya abierta: rename local, publicar el
+  nombre nuevo como en el paso 11, y PR nueva. El borrado de la rama vieja
+  **no** es de quien trabaja el ticket.
 - **Pedir confirmación redundante para el comentario del ticket** — el punto de
   autorización es el commit del paso 10, no un paso aparte. Atarlo a que la
-  rama ya esté publicada la dejaría secuestrada por tiempo indefinido: ese
-  push, ahora del humano, puede tardar horas o días.
+  rama ya esté publicada la dejaría secuestrada por tiempo indefinido cuando
+  el push es del humano, que puede tardar horas o días.
 - **Asumir la `baseBranch` default cuando el ticket no tiene tag de
   ambiente** — la ausencia de señal significa preguntar, no completar en
   silencio con `dev` u otro default configurado.
 - **Ignorar un tag de ambiente en el ticket y usar la `baseBranch` default
   igual** — el tag es una señal explícita por ticket y gana sobre el default
   del repo.
-- **Reportar "listo para publicar" y no dejar nada escuchando** — "esperar" no
+- **Con `"human"`, reportar "listo para publicar" y no dejar nada escuchando** — "esperar" no
   es una acción: el turno termina y el hijo no vuelve solo. La rama se publica,
   no pasa nada, y alguien tiene que venir a avisar. Es el mismo agujero que
   tenía el conductor con el CI: una promesa sin mecanismo.
