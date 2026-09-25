@@ -94,7 +94,7 @@ while IFS= read -r seg; do
 
     # 3. gh api que escribe.
     if printf '%s' "$seg" | grep -qE 'gh[[:space:]].*\bapi([[:space:]]|$)'; then
-      METHOD="$(printf '%s' "$seg" | grep -oE '(-X|--method)[[:space:]=]+[A-Za-z]+' | tail -1 | grep -oE '[A-Za-z]+$' | tr a-z A-Z)"
+      METHOD="$(printf '%s' "$seg" | grep -oE '(-X|--method)[[:space:]=]+[A-Za-z]+' | tail -1 | grep -oE '[A-Za-z]+$' | tr '[:lower:]' '[:upper:]')"
       if [ -n "$METHOD" ] && [ "$METHOD" != GET ]; then
         deny "gh api -X $METHOD esta prohibido: solo lectura (GET)"
       fi

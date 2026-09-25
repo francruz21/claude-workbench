@@ -76,8 +76,9 @@ if [ -n "$REMOTE_SHA" ]; then
     G cat-file -e "$REMOTE_SHA^{commit}" 2>/dev/null || G fetch -q origin "refs/heads/$BRANCH" 2>/dev/null || true
     TIP_EMAIL="$(G log -1 --format=%ae "$REMOTE_SHA" 2>/dev/null || true)"
     ME="$(G config user.email || true)"
-    [ -n "$TIP_EMAIL" ] && [ "$TIP_EMAIL" = "$ME" ] \
-      || refuse "'$BRANCH' ya existe en origin y no la publico este flujo (punta de ${TIP_EMAIL:-desconocido}): no es tuya"
+    if [ -z "$TIP_EMAIL" ] || [ "$TIP_EMAIL" != "$ME" ]; then
+      refuse "'$BRANCH' ya existe en origin y no la publico este flujo (punta de ${TIP_EMAIL:-desconocido}): no es tuya"
+    fi
   fi
   if [ "$REMOTE_SHA" = "$HEAD_SHA" ]; then
     printf 'publish-branch: %s ya esta publicada en %s, nada que empujar\n' "$BRANCH" "$HEAD_SHA"

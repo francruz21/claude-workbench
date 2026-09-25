@@ -50,7 +50,7 @@ denies 'curl -X PUT -H "Authorization: token x" https://api.github.com/repos/o/r
 denies 'curl -d "{}" https://api.github.com/repos/o/r/merges'
 
 echo "lo que tiene que pasar"
-allows '~/claude-workbench/tools/publish-branch.sh -C talentia-front'
+allows "$HOME/claude-workbench/tools/publish-branch.sh -C talentia-front"
 allows 'git status'
 allows 'git stash push -m wip'
 allows 'git log --oneline | grep push'
