@@ -112,10 +112,12 @@ parece necesario, la respuesta es preguntarle al usuario, no hacerlo.
   al hijo con `reply` y él contesta en tres líneas. Preguntarle al hijo cuesta un
   mensaje; leer el hilo cuesta el 12% de la ventana.
 - **No pushea, no mergea, no aprueba PRs.** Nada de `git push`, `git merge`,
-  `gh pr merge`, `gh pr review --approve`. Tampoco los hijos: dejan la rama
-  lista para publicar (sin upstream, a propósito) y esperan a que el humano
-  la publique. Recién con upstream ya creado el hijo abre la PR — ver los
-  pasos 11 y 13 de `ticket-workflow`.
+  `gh pr merge`, `gh pr review --approve`. Los hijos tampoco mergean ni
+  aprueban nunca. Lo único que un hijo escribe en el remoto depende de
+  `choices.publish`: con `"agent"` publica **su propia rama** con
+  `tools/publish-branch.sh` y abre la PR en el mismo turno; con `"human"` la
+  deja lista para publicar (sin upstream, a propósito) y espera al humano. Ver
+  los pasos 11, 13 y 13b de `ticket-workflow`.
 - **No decide lo delicado.** Resuelve los gates que tienen una respuesta
   recomendada y defendible; lo que toca arquitectura, contratos compartidos,
   permisos, infra, o lo irreversible, sube al usuario. Ver *Qué decide el
@@ -473,7 +475,8 @@ stacks en la máquina, que es justo lo que el torniquete existe para evitar.
 registro — o sea cuando `conductor-ledger.sh open-tickets` no devuelve nada.
 
 Entre una cosa y la otra hay una espera que puede durar días y que **no depende
-de ningún hijo**: la publicación de la rama, que la hace el humano a mano. Un
+de ningún hijo**: con `choices.publish: "human"`, la publicación de la rama, que
+la hace el humano a mano; con `"agent"`, el CI y el review de la PR. Un
 ticket en esa espera es trabajo abierto, no trabajo terminado, y tratarlo como
 terminado es lo que hace que un PR verde se quede sin anunciar hasta que el
 usuario venga a recordarlo.
@@ -651,7 +654,9 @@ una sola rama manda uno.
 **El conductor vigila con un mecanismo, no con una promesa.** Apenas se registra
 un PR, arma un monitor persistente sobre su gate. Cuando emite `GREEN` y todos
 los PRs de ese ticket están verdes, **el anuncio sale ahí**, sin que el usuario
-lo pida. Cuando emite `RED`, la falla vuelve al hijo. Ver
+lo pida. Cuando emite `RED`, la falla vuelve al hijo, que la arregla en la misma
+rama y la misma PR (paso 13b de `ticket-workflow`); el monitor sigue armado y el
+`GREEN` que cuenta es el del SHA nuevo. Ver
 [`reference/agents.md`](reference/agents.md#vigilar-el-gate-de-un-pr).
 
 Tres reglas del gate que **no** viven sólo en los reference: si se pierden, se
@@ -948,8 +953,8 @@ conductor es la mitad del trabajo hecha.
   está en esta sesión.
 - **Adjuntar las capturas en vez de embeberlas** — un adjunto queda como link al
   pie y nadie lo abre.
-- **Esperar el push para comentar la evidencia** — en este flujo el push lo corre
-  el usuario a mano y puede tardar días; la evidencia va cuando existe.
+- **Esperar el push para comentar la evidencia** — con `"human"` el push lo
+  corre el usuario a mano y puede tardar días; la evidencia va cuando existe.
 - **Conceder un turno sin haber verificado que el stack anterior bajó** — deja
   dos stacks arriba y el torniquete deja de servir para lo único que existe.
 - **Tratar como colgado a un hijo que espera turno** — es el conductor quien no

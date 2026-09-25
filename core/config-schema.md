@@ -50,7 +50,13 @@ probe podria pisar la respuesta que la persona ya dio.
 | `tracker` | string \| null | el tracker de tickets a usar; `null` si no se elegio ninguno todavia |
 | `worktrees` | string | `"orca"` \| `"git-worktree"` \| `"checkout"` |
 | `announce` | string | `"canal"` \| `"skip"` |
+| `publish` | string | `"human"` (la rama la publica una persona) \| `"agent"` (la publica quien trabaja el ticket, solo con `tools/publish-branch.sh`) |
 | `askEveryTime` | string[] | claves de `choices` a re-preguntar siempre en vez de usar el valor guardado |
+
+`publish` es una eleccion y no un hecho aunque dependa de que el remoto se
+pueda escribir: que el agente tenga credenciales no dice que la persona quiera
+que publique. Con `"agent"`, `tools/hooks/pretooluse-git-gate.sh` registrado a
+nivel usuario es lo que hace cumplir que la unica puerta sea el script.
 
 `tracker` va en `choices` y no en `detected` a proposito: aunque el probe
 pueda ver que hay mas de un tracker instalado, cual usar sigue siendo una
@@ -69,6 +75,7 @@ eleccion de la persona, no algo que el sistema revele por si solo.
     "tracker": "<nombre-del-tracker>",
     "worktrees": "git-worktree",
     "announce": "skip",
+    "publish": "human",
     "askEveryTime": []
   }
 }

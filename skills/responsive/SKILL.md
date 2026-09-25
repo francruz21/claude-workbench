@@ -10,6 +10,12 @@ description: Use SOLO cuando el usuario pide explícitamente adaptar una pantall
 Adaptar una pantalla a mobile y tablet, y **demostrar** que quedó bien:
 medida en el navegador de Orca a 320, 375 y 768 px, no a ojo sobre el código.
 
+## Requiere
+
+- `capabilities.orca` — la medición corre en el navegador embebido de Orca. Si
+  falta, no hay otro navegador que la reemplace: ver `core/resolve.md` y parar
+  a preguntar, en vez de medir en el Chrome del usuario o a ojo.
+
 ## Cuándo usarla
 
 Solo con una de estas dos señales, que se pueden verificar:
