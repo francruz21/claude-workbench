@@ -232,6 +232,15 @@ El registro **también es un guarda, no sólo un apunte**: `announced` se niega 
 anotar el anuncio si los PRs del ticket no están todos en `GREEN`, y `labelled`
 se niega si no hay anuncio registrado. Un reloj no puede saltear eso.
 
+**El usuario lo ve sin preguntarte.** Esta carpeta es también un mod de Claude
+Code (`hooks/register.tsx`): en una sesión cuyo workspace tiene registro con
+tickets abiertos abre el pane **Tanda**, pone el resumen en la status line,
+avisa con un toast cada gate que pasa a GREEN o RED, cada turno de QA y cada
+anuncio, y responde `/tanda` (y `/tanda viejos`) sin pasar por el modelo. Lee el
+registro, nunca lo escribe: lo que no anotes con el script no aparece. Por eso
+el turno de QA se anota (`set <ticket> qaTurn held|queued`, y `""` al liberarlo),
+no se recuerda.
+
 ### Olvidar al hijo
 
 Cuando un ticket quedó anunciado y limpiado, se cierra:
