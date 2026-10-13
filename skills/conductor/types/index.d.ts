@@ -11,6 +11,8 @@ export type Row = {
   isAnnounced: boolean
   // The worktree was already removed: open only until it is announced or closed by hand.
   isCleaned: boolean
+  // The child's terminal handle, the address its messages come from.
+  handle: string | null
   updatedAt: string | null
   lastNote: string | null
 }
@@ -21,6 +23,12 @@ declare module 'claude-code' {
       // Absolute path of this workspace's ledger; null when the session is not a conductor's.
       ledger: string | null
       rows: Row[]
+      // This session is the conductor: it loaded the skill, or `/tanda on`.
+      isArmed: boolean
+      // Inbox messages and announce-ready tickets already woken for.
+      woken: string[]
+      lastTurnAt: number
+      idleNudges: number
     }
   }
 }

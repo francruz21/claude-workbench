@@ -25,7 +25,12 @@ const LEDGER = JSON.stringify({
 function host(on: On, text: string | null) {
   const disk = { text }
   const toasts: string[] = []
+  const opened: string[] = []
+  const statuses: (string | undefined)[] = []
   const clock = mock.clock(on, { now: NOW })
+  mock.store(on)
+  on('session.id', async () => ({ value: 'sess-1' }))
+  on('skill.prompt', async ($, e) => ({ text: e.text }))
   mock.env(on, { HOME: '/h', WORKBENCH_WORKSPACE: '/w' })
   on('fs.read', async ($, e) => {
     if (disk.text === null || e.path !== '/h/.claude/workbench/state/conductor-w.json') throw new Error('ENOENT')
@@ -34,15 +39,23 @@ function host(on: On, text: string | null) {
   })
   on('session.start', async ($, e) => ({ cwd: e.cwd }))
   on('command.register', async ($, e) => ({ value: { command: e.name } }))
-  on('ui.open', async () => ({ value: { isPlaced: true } }))
-  on('ui.status', async () => ({ value: undefined }))
+  on('ui.open', async ($, e) => {
+    opened.push(e.id)
+
+    return { value: { isPlaced: true } }
+  })
+  on('ui.status', async ($, e) => {
+    statuses.push(e.text)
+
+    return { value: undefined }
+  })
   on('ui.toast', async ($, e) => {
     toasts.push(e.text)
 
     return { value: undefined }
   })
 
-  return { disk, toasts, clock }
+  return { disk, toasts, clock, opened, statuses }
 }
 
 test('the pane draws active tickets and counts the stale ones', async ($, on) => {
@@ -60,20 +73,16 @@ test('the pane draws active tickets and counts the stale ones', async ($, on) =>
 })
 
 test('without a ledger the session stays silent', async ($, on) => {
-  host(on, null)
+  const { opened, statuses } = host(on, null)
   await $.session.start({ cwd: '/w', surface: 'terminal', isInteractive: true })
-  const ran = await $.command.run({
-    command: 'tanda',
-    args: '',
-    origin: { kind: 'composer' },
-    presentation: { layout: 'main', columns: 80 },
-  } as never)
-  expect(ran.text).toBe('Esta sesión no tiene un registro de conductor.')
+  expect(opened).toEqual([])
+  expect(statuses.filter(text => text !== undefined)).toEqual([])
 })
 
-test('a gate that turns red raises a toast on the next poll', async ($, on) => {
+test('in the armed session a gate that turns red raises a toast on the next poll', async ($, on) => {
   const { disk, toasts, clock } = host(on, LEDGER)
   await $.session.start({ cwd: '/w', surface: 'terminal', isInteractive: true })
+  await $.skill.prompt({ skill: 'conductor', text: 'skill body' })
   expect(toasts).toEqual([])
 
   disk.text = LEDGER.replace('"GREEN"', '"RED"')

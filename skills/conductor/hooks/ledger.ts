@@ -27,6 +27,7 @@ type RawTicket = {
   cleaned?: unknown
   updatedAt?: unknown
   notes?: unknown
+  child?: unknown
 }
 
 const asString = (value: unknown): string | null =>
@@ -73,6 +74,7 @@ export function parseLedger(text: string): Row[] | null {
       prs: toPrs(t.prs),
       // Older entries carry `announcedAt`; newer ones an `announced` object.
       isAnnounced: (t.announced != null && t.announced !== false) || asString(t.announcedAt) !== null,
+      handle: asString((t.child as { handle?: unknown } | undefined)?.handle),
       isCleaned: t.cleaned != null && t.cleaned !== false,
       updatedAt: asString(t.updatedAt),
       lastNote: lastNoteOf(t.notes),

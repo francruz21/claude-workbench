@@ -1,0 +1,126 @@
+// What keeps the conductor moving without the person reminding it: the rules
+// re-anchored in the system prompt every request, the wake-up text when a
+// child needs it, and the guards on the mistakes it keeps repeating. Pure, no `$`.
+
+import type { Row } from '../types'
+
+import { brief, type Summary } from './ledger'
+
+// The message types a child raises that the conductor has to act on.
+export const ACTIONABLE = ['worker_done', 'escalation', 'decision_gate'] as const
+
+export type InboxMessage = {
+  id: string
+  from_handle: string
+  type: string
+  read: number | boolean
+  subject?: string
+}
+
+export type Pending = { id: string; ticket: string; type: string; subject: string }
+
+// Unread actionable messages from the children of open tickets. A message from
+// a handle the ledger does not hold (a closed batch, another session) is ignored:
+// that is exactly the stale message `check --wait` without `--types` delivers.
+export function pendingFromChildren(messages: InboxMessage[], children: Row[]): Pending[] {
+  const ticketOf = new Map(children.flatMap(row => (row.handle ? [[row.handle, row.id] as const] : [])))
+
+  return messages.flatMap(message => {
+    const ticket = ticketOf.get(message.from_handle)
+    const isUnread = message.read === 0 || message.read === false
+    if (!ticket || !isUnread || !(ACTIONABLE as readonly string[]).includes(message.type)) return []
+
+    return [{ id: message.id, ticket, type: message.type, subject: message.subject ?? '' }]
+  })
+}
+
+export function parseInbox(text: string): InboxMessage[] {
+  try {
+    const data = JSON.parse(text) as { result?: { messages?: unknown } }
+    const messages = data.result?.messages
+
+    return Array.isArray(messages) ? (messages as InboxMessage[]) : []
+  } catch {
+    return []
+  }
+}
+
+// Tickets whose PRs are all GREEN and that are not announced yet.
+export function readyToAnnounce(rows: Row[]): string[] {
+  return rows
+    .filter(row => !row.isAnnounced && row.prs.length > 0 && row.prs.every(pr => pr.gate === 'GREEN'))
+    .map(row => row.id)
+}
+
+export function wakeText(pending: Pending[], announce: string[]): string | null {
+  if (pending.length === 0 && announce.length === 0) return null
+  const lines = ['[conductor] Hay trabajo de la tanda esperándote; seguí tu ciclo sin esperar al usuario.']
+  for (const p of pending) lines.push(`- ${p.ticket}: ${p.type}${p.subject ? ` (${p.subject})` : ''} sin atender (${p.id})`)
+  for (const id of announce) lines.push(`- ${id}: PRs en GREEN, sin anunciar`)
+  lines.push('Leelo con `inbox` (no consume), resolvé con tu recomendación, y reportá en una línea por ticket.')
+
+  return lines.join('\n')
+}
+
+export function idleText(summary: Summary, nowMs: number): string {
+  return [
+    '[conductor] Pasó un rato sin actividad y la tanda tiene tickets activos.',
+    'Revisá el estado de cada hijo (`terminal read` / `inbox`), destrabá lo que esté parado, y reportá solo lo que cambió.',
+    '',
+    brief(summary, nowMs),
+  ].join('\n')
+}
+
+// Re-read on every request, so it survives compaction and a long session.
+export function anchorText(summary: Summary, nowMs: number): string {
+  return `# Conductor: la tanda y tu ciclo
+
+Sos el conductor de esta tanda (skill \`conductor\`). El registro dice:
+
+${brief(summary, nowMs)}
+
+Tu ciclo, sin esperar a que el usuario te lo recuerde:
+1. Mensajes de los hijos: \`orca-ide orchestration check --terminal <tu handle> --types worker_done,escalation,decision_gate\`. Para releer, \`inbox\` (no consume); \`check\` sí consume.
+2. Cada gate lo resolvés vos con tu recomendación y lo reportás en una línea. Al usuario solo le subís: escribir en prod o en ambientes compartidos, push/merge, crear tickets, tocar el wrapper; si lo preguntás con AskUserQuestion, cada header empieza con "Delicado". No le repitas decisiones pendientes en cada aviso.
+3. Un ticket con todas sus PRs en GREEN y sin anunciar: se anuncia (cola por ticket, \`announce-arm\` primero).
+4. Anunciado: se limpia el worktree y se cierra el ticket, sin esperar el merge.
+5. Turno de QA: se concede de a uno y se anota con \`conductor-ledger.sh set <ticket> qaTurn held|queued\` (\`""\` al liberarlo).
+
+Mensajería: respondé al \`from_handle\` del último mensaje del hijo, no al del preamble; \`reply\` y \`terminal send\` van en la misma llamada.`
+}
+
+const ORCH_CHECK = /\borca(?:-ide)?\s+orchestration\s+check\b/
+const WORKTREE_CREATE = /\borca(?:-ide)?\s+worktree\s+create\b/
+
+// A reason to refuse this Bash command, or null to let it run.
+export function bashGuard(command: string, rows: Row[]): string | null {
+  for (const part of command.split(/&&|\|\||;|\n/)) {
+    if (ORCH_CHECK.test(part) && /--wait\b/.test(part) && !/--types\b/.test(part)) {
+      return 'check --wait sin --types entrega mensajes viejos de otras tandas como si fueran la respuesta. Agregá --types worker_done,escalation,decision_gate.'
+    }
+    if (WORKTREE_CREATE.test(part)) {
+      const lower = part.toLowerCase()
+      // The id as a whole token: EDW-80 must not match edw-802.
+      const taken = rows.find(row => {
+        const id = row.id.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+        return new RegExp(`(^|[^a-z0-9])${id}(?![0-9])`).test(lower)
+      })
+      if (taken) {
+        return `${taken.id} ya está abierto en el registro (${taken.name}). Reconciliá con el hijo existente (conductor-ledger.sh brief) en vez de crear otro worktree.`
+      }
+    }
+  }
+
+  return null
+}
+
+export const DELICATE = /^\s*delicad[oa]\b/i
+
+// The conductor decides what has a defensible recommendation. A question it
+// still has to ask is tagged by starting its header with "Delicado".
+export function askGuard(headers: string[]): string | null {
+  if (headers.length > 0 && headers.every(header => DELICATE.test(header))) return null
+
+  return 'Sos el conductor: decidí con tu recomendación y reportá en una línea. Solo se pregunta lo que no tiene una recomendación defendible o es irreversible fuera de local (prod, push/merge, crear tickets, tocar el wrapper); si es eso, volvé a preguntar con cada header empezando por "Delicado".'
+}
