@@ -148,6 +148,10 @@ bajan desde la capa de usuario (ver la seccion siguiente).
 | `qa.startCommand` | string | comando que levanta la app local para el QA del paso 8 |
 | `qa.stopCommand` | string | comando que la baja y libera los puertos, al cerrarse el paso 8 |
 | `qa.url` | string | URL donde responde la app una vez levantada |
+| `qaResultLabels` | object | el objeto que agrupa las tres claves de abajo; no se declara solo |
+| `qaResultLabels.group` | string | grupo de labels del tracker que guarda el resultado del QA (idealmente de seleccion unica) |
+| `qaResultLabels.pass` | string | label que se pone cuando un QA por orden pasa entero |
+| `qaResultLabels.fail` | string | label que se pone cuando falla al menos un caso, y que se saca al publicar la correccion |
 | `repos` | array de `{slug, tag}` | repos del workspace que este proyecto conduce |
 | `orca.wrapperRepoId` | string | id en Orca del repo wrapper que agrupa `repos` |
 | `gateWorkflow` | string | workflow de CI que actua de gate antes de anunciar |
@@ -211,6 +215,11 @@ no exige tocar nada compartido.
     "startCommand": "<comando-que-levanta-la-app>",
     "stopCommand": "<comando-que-la-baja>",
     "url": "<url-local-de-la-app>"
+  },
+  "qaResultLabels": {
+    "group": "<grupo-de-labels-de-qa>",
+    "pass": "<label-qa-ok>",
+    "fail": "<label-qa-fallo>"
   },
   "repos": [{ "slug": "<slug-de-repo>", "tag": "<tag-de-repo>" }],
   "gateWorkflow": "<nombre-del-workflow>",
