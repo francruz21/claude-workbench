@@ -7,6 +7,7 @@ import {
   askGuard,
   bashGuard,
   idleText,
+  ownHandle,
   parseInbox,
   pendingFromChildren,
   readyToAnnounce,
@@ -29,6 +30,7 @@ const isArmed = atom({ plugin: 'conductor', key: 'isArmed' } as const, false)
 const woken = atom({ plugin: 'conductor', key: 'woken' } as const, [])
 const lastTurnAt = atom({ plugin: 'conductor', key: 'lastTurnAt' } as const, 0)
 const idleNudges = atom({ plugin: 'conductor', key: 'idleNudges' } as const, 0)
+const handle = atom({ plugin: 'conductor', key: 'handle' } as const, null)
 
 // The ledger's text, or null when the file is missing or unreadable.
 async function readText($: EngineInterface, path: string): Promise<string | null> {
@@ -55,8 +57,24 @@ async function workspaceOf($: EngineInterface, cwd: string): Promise<string> {
 
 const armedKey = async ($: EngineInterface) => `armed:${await $.session.id()}`
 
+// This session's own Orca terminal, so the anchor names the handle to check.
+async function identify($: EngineInterface): Promise<void> {
+  const paneKey = await $.env.get('ORCA_PANE_KEY')
+  if (!paneKey) return
+  try {
+    const { exitCode, stdout } = await $.process.run(['orca-ide', 'terminal', 'list', '--json'])
+    if (exitCode === 0) {
+      const me = ownHandle(stdout, paneKey)
+      await update($, handle, () => me)
+    }
+  } catch {
+    // no Orca on this host
+  }
+}
+
 async function arm($: EngineInterface, on: boolean): Promise<void> {
   await update($, isArmed, () => on)
+  if (on) await identify($)
   await $.store.set(await armedKey($), on)
   if (on) {
     await update($, lastTurnAt, () => 0)
@@ -129,6 +147,7 @@ export const register: Register = on => {
     // A resumed conductor session stays armed across restarts.
     const wasArmed = (await $.store.get(await armedKey($))) === true
     await update($, isArmed, () => wasArmed)
+    if (wasArmed) await identify($)
     await $.command.register({
       name: 'tanda',
       description: 'Pane de la tanda del conductor; "/tanda viejos" lista los abiertos viejos, "/tanda on|off" arma o desarma esta sesión',
@@ -168,7 +187,7 @@ export const register: Register = on => {
     const composed = await next(e)
     if (!(await read($, isArmed))) return composed
     const now = await $.clock.now()
-    const section = { id: 'conductor:anchor', text: anchorText(summarize(await read($, rows), now), now), scope: 'session' } as const
+    const section = { id: 'conductor:anchor', text: anchorText(summarize(await read($, rows), now), now, await read($, handle)), scope: 'session' } as const
 
     return { ...composed, sections: [...composed.sections, section] }
   })

@@ -29,6 +29,8 @@ declare module 'claude-code' {
       woken: string[]
       lastTurnAt: number
       idleNudges: number
+      // This session's Orca terminal handle; it changes when the conductor is reopened.
+      handle: string | null
     }
   }
 }

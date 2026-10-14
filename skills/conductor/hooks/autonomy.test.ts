@@ -77,6 +77,12 @@ describe('anchorText', () => {
     expect(text).toContain('--types worker_done,escalation,decision_gate')
     expect(text).toContain('from_handle')
   })
+
+  test('names the session handle when it is known', () => {
+    const text = anchorText(summarize(rows, NOW), NOW, 'term_now')
+    expect(text).toContain('tu handle en esta sesión es `term_now`')
+    expect(text).toContain('check --terminal term_now --types')
+  })
 })
 
 describe('bashGuard', () => {

@@ -72,15 +72,15 @@ export function idleText(summary: Summary, nowMs: number): string {
 }
 
 // Re-read on every request, so it survives compaction and a long session.
-export function anchorText(summary: Summary, nowMs: number): string {
+export function anchorText(summary: Summary, nowMs: number, handle: string | null = null): string {
   return `# Conductor: la tanda y tu ciclo
 
-Sos el conductor de esta tanda (skill \`conductor\`). El registro dice:
+Sos el conductor de esta tanda (skill \`conductor\`)${handle ? `; tu handle en esta sesión es \`${handle}\` (si te reabrieron, los hijos pueden seguir escribiéndole al viejo: el despertador los mira igual)` : ''}. El registro dice:
 
 ${brief(summary, nowMs)}
 
 Tu ciclo, sin esperar a que el usuario te lo recuerde:
-1. Mensajes de los hijos: \`orca-ide orchestration check --terminal <tu handle> --types worker_done,escalation,decision_gate\`. Para releer, \`inbox\` (no consume); \`check\` sí consume.
+1. Mensajes de los hijos: \`orca-ide orchestration check --terminal ${handle ?? '<tu handle>'} --types worker_done,escalation,decision_gate\`. Para releer, \`inbox\` (no consume); \`check\` sí consume.
 2. Cada gate lo resolvés vos con tu recomendación y lo reportás en una línea. Al usuario solo le subís: escribir en prod o en ambientes compartidos, push/merge, crear tickets, tocar el wrapper; si lo preguntás con AskUserQuestion, cada header empieza con "Delicado". No le repitas decisiones pendientes en cada aviso.
 3. Un ticket con todas sus PRs en GREEN y sin anunciar: se anuncia (cola por ticket, \`announce-arm\` primero).
 4. Anunciado: se limpia el worktree y se cierra el ticket, sin esperar el merge.
@@ -123,4 +123,21 @@ export function askGuard(headers: string[]): string | null {
   if (headers.length > 0 && headers.every(header => DELICATE.test(header))) return null
 
   return 'Sos el conductor: decidí con tu recomendación y reportá en una línea. Solo se pregunta lo que no tiene una recomendación defendible o es irreversible fuera de local (prod, push/merge, crear tickets, tocar el wrapper); si es eso, volvé a preguntar con cada header empezando por "Delicado".'
+}
+
+// This terminal's handle in `orca-ide terminal list --json`, by the pane key
+// Orca puts in its environment (`<tabId>:<leafId>`).
+export function ownHandle(listJson: string, paneKey: string): string | null {
+  try {
+    const data = JSON.parse(listJson) as { result?: { terminals?: unknown } }
+    const terminals = data.result?.terminals
+    if (!Array.isArray(terminals)) return null
+    const mine = terminals.find(
+      (t: { tabId?: unknown; leafId?: unknown }) => `${String(t.tabId)}:${String(t.leafId)}` === paneKey,
+    ) as { handle?: unknown } | undefined
+
+    return typeof mine?.handle === 'string' ? mine.handle : null
+  } catch {
+    return null
+  }
 }
