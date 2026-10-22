@@ -95,7 +95,8 @@ orca-ide terminal wait --terminal "$handle" --for tui-idle --timeout-ms 60000 --
 orca-ide terminal send --terminal "$handle" --text "/model <child|childHeavy>" --enter --json
 task="$(orca-ide orchestration task-create --spec "<spec del ticket>" --json | jq -r '.result.task.id // .result.id // empty')"
 [ -n "$task" ] || echo "task-create sin id: leer su salida antes de despachar"
-orca-ide orchestration dispatch --task "$task" --to "$handle" --inject --json
+dispatch="$(orca-ide orchestration dispatch --task "$task" --to "$handle" --inject --json | jq -r '.result.dispatch.id // .result.id // empty')"
+# $task (task_…) y $dispatch (ctx_…) van al registro: conductor-ledger.sh child --task-id / --dispatch-id
 ```
 
 ### El nombre — lo pone el padre, siempre
