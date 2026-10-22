@@ -104,6 +104,19 @@ led announced TCK-1 >/dev/null
 assert_not_contains 'deny' 'con el anuncio registrado, la label pasa' \
   run_hook 'gh pr edit 376 --repo OWNER/REPO --add-label discord-notificado'
 
+# El numero de PR es por repo. Otro ticket con el mismo numero en otro repo,
+# sin anunciar, no puede ni tapar ni heredar el anuncio del primero.
+led open TCK-9 --slug tck-9-mismo-numero-otro-repo >/dev/null
+led pr-add TCK-9 --repo OTRO/REPO --number 376 >/dev/null
+assert_not_contains 'deny' 'el mismo numero en otro repo no tapa el anuncio' \
+  run_hook 'gh pr edit 376 --repo OWNER/REPO --add-label discord-notificado'
+assert_not_contains 'deny' 'y tambien lee -R' \
+  run_hook 'gh pr edit 376 -R OWNER/REPO --add-label discord-notificado'
+assert_contains 'TCK-9' 'y el del otro repo se juzga contra su propio ticket' \
+  run_hook 'gh pr edit 376 --repo OTRO/REPO --add-label discord-notificado'
+assert_contains 'repo explicito' 'sin repo y con el numero repetido, se pide el repo' \
+  run_hook 'gh pr edit 376 --add-label discord-notificado'
+
 # --- 2. el envio al canal ---------------------------------------------------
 led open TCK-2 --slug tck-2-otro-slug-largo >/dev/null
 led pr-add TCK-2 --repo OWNER/REPO --number 380 >/dev/null
