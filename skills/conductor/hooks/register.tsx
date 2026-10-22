@@ -14,6 +14,7 @@ import {
   wakeText,
 } from './autonomy'
 import { ago, brief, changes, ledgerPath, parseLedger, prLabel, staleReport, statusLine, summarize } from './ledger'
+import { withoutHeartbeats } from './inject'
 import { anchorSection, dispatchGuard, modelsSent, parseCommand, parseRouting, runsOn, statusText, withRouting } from './routing'
 
 const PANE = 'conductor-tanda'
@@ -35,6 +36,8 @@ const handle = atom({ plugin: 'conductor', key: 'handle' } as const, null)
 const routing = atom({ plugin: 'conductor', key: 'routing' } as const, { enabled: false, conductor: null, child: null, childHeavy: null })
 const modelSentTo = atom({ plugin: 'conductor', key: 'modelSentTo' } as const, {})
 const isModelPending = atom({ plugin: 'conductor', key: 'isModelPending' } as const, false)
+const heartbeats = atom({ plugin: 'conductor', key: 'heartbeats' } as const, {})
+const isInjected = atom({ plugin: 'conductor', key: 'isInjected' } as const, false)
 
 // The ledger's text, or null when the file is missing or unreadable.
 async function readText($: EngineInterface, path: string): Promise<string | null> {
@@ -219,18 +222,32 @@ export const register: Register = on => {
     return result
   })
 
-  // The person spoke: the idle nudges start counting again.
   on('prompt.submit', async ($, e, next) => {
-    if (e.origin.kind === 'composer') await update($, idleNudges, () => 0)
+    const filtered = e.command === undefined ? withoutHeartbeats(e.text) : null
+    // The person spoke: the idle nudges start counting again.
+    if (filtered === null) {
+      if (e.origin.kind === 'composer') await update($, idleNudges, () => 0)
 
-    return next(e)
-  })
+      return next(e)
+    }
+
+    // Orca's injected mail: seeing it once tells the session the injection rules,
+    // and its heartbeats go to the pane instead of costing the conductor a turn.
+    await update($, isInjected, () => true)
+    if (!(await read($, isArmed)) || filtered.heartbeats.length === 0) return next(e)
+
+    const now = await $.clock.now()
+    await update($, heartbeats, map => ({ ...map, ...Object.fromEntries(filtered.heartbeats.map(h => [h, now])) }))
+    if (filtered.text === null) return { drop: `conductor: ${filtered.heartbeats.length} heartbeat(s) al pane, sin turno.` }
+
+    return next({ ...e, text: filtered.text })
+  }).catch(($, e, next) => next(e))
 
   on('prompt.compose', async ($, e, next) => {
     const composed = await next(e)
     if (!(await read($, isArmed))) return composed
     const now = await $.clock.now()
-    const text = `${anchorText(summarize(await read($, rows), now), now, await read($, handle))}\n\n${anchorSection(await read($, routing))}`
+    const text = `${anchorText(summarize(await read($, rows), now), now, await read($, handle), await read($, isInjected))}\n\n${anchorSection(await read($, routing))}`
     const section = { id: 'conductor:anchor', text, scope: 'session' } as const
 
     return { ...composed, sections: [...composed.sections, section] }
@@ -239,7 +256,7 @@ export const register: Register = on => {
   // The guards are a reminder, not a lock: if one fails, the call goes on.
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
     if (!(await read($, isArmed))) return next(e)
-    const reason = bashGuard(e.command, await read($, rows)) ?? dispatchGuard(e.command, await read($, routing), await read($, modelSentTo))
+    const reason = bashGuard(e.command, await read($, rows), await read($, isInjected)) ?? dispatchGuard(e.command, await read($, routing), await read($, modelSentTo))
     if (reason !== null) return { deny: `conductor: ${reason}` }
     const result = await next(e)
     const sent = modelsSent(e.command)
@@ -299,6 +316,12 @@ export const register: Register = on => {
     const { Box, Text } = $.ui.resolve(e)
     const now = await $.clock.now()
     const summary = summarize(await read($, rows), now)
+    const beats = await read($, heartbeats)
+    const alive = (row: Row) => {
+      const at = row.handle === null ? undefined : beats[row.handle]
+
+      return at === undefined ? '' : `  ♥ ${ago(new Date(at).toISOString(), now)}`
+    }
     const line = (row: Row) => (
       <Box flexDirection="column" key={row.id}>
         <Text bold>{row.name}</Text>
@@ -308,7 +331,10 @@ export const register: Register = on => {
           {'  '}
           {row.isAnnounced ? '✓ anunciado' : '✗ sin anunciar'}
         </Text>
-        <Text dimColor>{ago(row.updatedAt, now)}</Text>
+        <Text dimColor>
+          {ago(row.updatedAt, now)}
+          {alive(row)}
+        </Text>
       </Box>
     )
 

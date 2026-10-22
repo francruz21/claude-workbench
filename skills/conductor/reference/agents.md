@@ -72,25 +72,30 @@ Uno por ticket. En un workspace con submódulos, el worktree se crea **una sola
 vez a nivel del wrapper** y trae los submódulos adentro — no uno por submódulo.
 
 ```bash
-orca-ide worktree create \
+out="$(orca-ide worktree create \
   --repo id:<wrapperRepoId> \
   --name <ticket-slug> \
   --base-branch <rama-base> \
   --linear-issue <TICKET-ID> \
-  --agent claude --json
-# leer worktree id y el handle de la respuesta:
-#   result.agentTerminalHandle (o result.startupTerminal.handle en runtimes viejos)
+  --agent claude --json)"
+# El id es el completo <repoId>::<path>; el handle, el del agente (los runtimes
+# viejos lo dan en startupTerminal). Si alguno sale vacío, NO crear otro: el
+# worktree ya existe, se busca con `worktree list` / `terminal list`.
+wt="$(jq -r '.result.worktree.id // empty' <<<"$out")"
+handle="$(jq -r '.result.agentTerminalHandle // .result.startupTerminal.handle // empty' <<<"$out")"
+[ -n "$wt" ] && [ -n "$handle" ] || { printf '%s\n' "$out"; echo "sin id o sin handle"; }
 
 # El nombre legible va DESPUES, en un segundo comando: `create` NO tiene
 # --display-name. Sin este paso la tarjeta muestra el slug crudo.
-orca-ide worktree set --worktree "id:<worktreeId>" \
+orca-ide worktree set --worktree "id:$wt" \
   --display-name "<TICKET-ID> · <slug-corto>" --json
 
-orca-ide terminal wait --terminal <handle> --for tui-idle --timeout-ms 60000 --json
+orca-ide terminal wait --terminal "$handle" --for tui-idle --timeout-ms 60000 --json
 # Solo con choices.modelRouting.enabled: el modelo del hijo, ANTES del dispatch.
-orca-ide terminal send --terminal <handle> --text "/model <child|childHeavy>" --enter --json
-orca-ide orchestration task-create --spec "<spec del ticket>" --json
-orca-ide orchestration dispatch --task <taskId> --to <handle> --inject --json
+orca-ide terminal send --terminal "$handle" --text "/model <child|childHeavy>" --enter --json
+task="$(orca-ide orchestration task-create --spec "<spec del ticket>" --json | jq -r '.result.task.id // .result.id // empty')"
+[ -n "$task" ] || echo "task-create sin id: leer su salida antes de despachar"
+orca-ide orchestration dispatch --task "$task" --to "$handle" --inject --json
 ```
 
 ### El nombre — lo pone el padre, siempre
@@ -355,6 +360,27 @@ de negocio), el del agente es **otro** comentario, el de la evidencia técnica.
 No se contradicen ni se repiten: son dos temas.
 
 ## Supervisar sin matar agentes
+
+### La inyección manda sobre `check --wait`
+
+Orca puede entregarle el correo al conductor de dos formas, y **no se mezclan**:
+
+- **Inyectado.** Orca escribe un bloque `--- Orchestration Messages (N) ---` en
+  el prompt del conductor, que arranca un turno solo. Esos mensajes **quedan
+  leídos al entrar**: un `check --wait` armado en paralelo (en background, por
+  ejemplo) vuelve vacío a los 15 minutos aunque en el medio hayan llegado tres
+  gates. Con inyección no se espera nada: se atiende cada bloque cuando entra y
+  se relee con `inbox`, que no consume.
+- **Sin inyección** (la sesión no recibió ningún bloque así): las ventanas de
+  `check --wait` de abajo son la única forma de enterarse.
+
+La señal es empírica: si en esta sesión ya entró un bloque inyectado, manda la
+inyección. Con el mod cargado eso queda registrado, el ancla deja de pedir
+`check` y la guarda niega `check --wait`. Los `heartbeat` del bloque no le
+llegan al conductor: el mod los saca y los muestra en el pane (`♥ hace N min`),
+porque solo dicen "vivo".
+
+### Sin inyección: ventanas de `check --wait`
 
 ```bash
 orca-ide orchestration check --wait \

@@ -44,6 +44,10 @@ declare module 'claude-code' {
       modelSentTo: Record<string, string>
       // An arming not yet followed by the conductor's own `/model`.
       isModelPending: boolean
+      // When each child's last heartbeat arrived, by handle (ms); shown in the pane, never injected.
+      heartbeats: Record<string, number>
+      // Orca injected mail into this session: the injection rules over `check --wait`.
+      isInjected: boolean
     }
   }
 }

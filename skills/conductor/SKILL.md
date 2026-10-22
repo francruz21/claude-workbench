@@ -249,6 +249,11 @@ En una sesión armada:
   prompt que arranca un turno en cuanto la sesión queda libre. Cada mensaje
   despierta una sola vez. Con hijos activos y 30 minutos sin turnos, un
   empujón para revisarlos; tres seguidos como máximo, hasta que pase algo.
+- **Correo inyectado.** Al ver el primer bloque `--- Orchestration Messages ---`
+  de Orca, la sesión queda marcada: el ancla deja de pedir `check` y cualquier
+  `check --wait` se niega (volvería vacío). Los `heartbeat` del bloque no te
+  cuestan un turno: se sacan, y el pane muestra `♥ hace N min` por hijo. Un
+  bloque con solo heartbeats no entra.
 - **Guardas.** Se niegan `orchestration check --wait` sin `--types`, un
   `worktree create` para un ticket que ya está abierto en el registro, un
   `AskUserQuestion` cuyos headers no empiezan con "Delicado", y, con el ruteo
@@ -680,9 +685,12 @@ ningún `/model`. Ver
 
 ### 4. Supervisión — resolver o escalar
 
-Ventanas rodantes de `check --wait --types worker_done,escalation,decision_gate`
-con `--timeout-ms 900000`. Ver
-[`reference/agents.md`](reference/agents.md#supervisar-sin-matar-agentes).
+**Si Orca te inyecta los mensajes, la inyección manda**: cada bloque
+`--- Orchestration Messages ---` entra como turno, ya leído, y un `check --wait`
+en paralelo vuelve vacío. Se atiende lo que entra y se relee con `inbox`. Solo
+sin inyección: ventanas rodantes de `check --wait --types
+worker_done,escalation,decision_gate` con `--timeout-ms 900000`. Ver
+[`reference/agents.md`](reference/agents.md#la-inyección-manda-sobre-check---wait).
 
 Cuando llega un gate: leer el diff del hijo, pasarle `code-review`, y aplicar el
 test de *Qué decide el conductor, y qué te pregunta*.

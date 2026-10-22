@@ -72,7 +72,13 @@ export function idleText(summary: Summary, nowMs: number): string {
 }
 
 // Re-read on every request, so it survives compaction and a long session.
-export function anchorText(summary: Summary, nowMs: number, handle: string | null = null): string {
+// With Orca injecting the mail, the messages arrive as turns of their own and are
+// read on arrival: a `check --wait` then returns empty, so the injection rules.
+export function anchorText(summary: Summary, nowMs: number, handle: string | null = null, isInjected = false): string {
+  const mail = isInjected
+    ? 'Mensajes de los hijos: Orca te los inyecta en el prompt y quedan leídos al llegar. **No armes `check --wait`** (vuelve vacío aunque hayan llegado gates); para releer, `orca-ide orchestration inbox` (no consume). Los heartbeats no te llegan: el mod los saca y los muestra en el pane.'
+    : `Mensajes de los hijos: \`orca-ide orchestration check --terminal ${handle ?? '<tu handle>'} --types worker_done,escalation,decision_gate\`. Para releer, \`inbox\` (no consume); \`check\` sí consume.`
+
   return `# Conductor: la tanda y tu ciclo
 
 Sos el conductor de esta tanda (skill \`conductor\`)${handle ? `; tu handle en esta sesión es \`${handle}\` (si te reabrieron, los hijos pueden seguir escribiéndole al viejo: el despertador los mira igual)` : ''}. El registro dice:
@@ -80,7 +86,7 @@ Sos el conductor de esta tanda (skill \`conductor\`)${handle ? `; tu handle en e
 ${brief(summary, nowMs)}
 
 Tu ciclo, sin esperar a que el usuario te lo recuerde:
-1. Mensajes de los hijos: \`orca-ide orchestration check --terminal ${handle ?? '<tu handle>'} --types worker_done,escalation,decision_gate\`. Para releer, \`inbox\` (no consume); \`check\` sí consume.
+1. ${mail}
 2. Cada gate lo resolvés vos con tu recomendación y lo reportás en una línea. Al usuario solo le subís: escribir en prod o en ambientes compartidos, push/merge, crear tickets, tocar el wrapper; si lo preguntás con AskUserQuestion, cada header empieza con "Delicado". No le repitas decisiones pendientes en cada aviso.
 3. Un ticket con todas sus PRs en GREEN y sin anunciar: se anuncia (cola por ticket, \`announce-arm\` primero).
 4. Anunciado: se limpia el worktree y se cierra el ticket, sin esperar el merge.
@@ -93,8 +99,11 @@ const ORCH_CHECK = /\borca(?:-ide)?\s+orchestration\s+check\b/
 const WORKTREE_CREATE = /\borca(?:-ide)?\s+worktree\s+create\b/
 
 // A reason to refuse this Bash command, or null to let it run.
-export function bashGuard(command: string, rows: Row[]): string | null {
+export function bashGuard(command: string, rows: Row[], isInjected = false): string | null {
   for (const part of command.split(/&&|\|\||;|\n/)) {
+    if (isInjected && ORCH_CHECK.test(part) && /--wait\b/.test(part)) {
+      return 'en esta sesión Orca te inyecta los mensajes de los hijos y quedan leídos al llegar: un check --wait vuelve vacío aunque hayan llegado gates. No hace falta esperar; para releer, orca-ide orchestration inbox (no consume).'
+    }
     if (ORCH_CHECK.test(part) && /--wait\b/.test(part) && !/--types\b/.test(part)) {
       return 'check --wait sin --types entrega mensajes viejos de otras tandas como si fueran la respuesta. Agregá --types worker_done,escalation,decision_gate.'
     }
