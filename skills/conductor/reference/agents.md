@@ -87,6 +87,8 @@ orca-ide worktree set --worktree "id:<worktreeId>" \
   --display-name "<TICKET-ID> · <slug-corto>" --json
 
 orca-ide terminal wait --terminal <handle> --for tui-idle --timeout-ms 60000 --json
+# Solo con choices.modelRouting.enabled: el modelo del hijo, ANTES del dispatch.
+orca-ide terminal send --terminal <handle> --text "/model <child|childHeavy>" --enter --json
 orca-ide orchestration task-create --spec "<spec del ticket>" --json
 orca-ide orchestration dispatch --task <taskId> --to <handle> --inject --json
 ```
@@ -120,6 +122,28 @@ pane se reinicia.
 `qaTurn` es `"held"`, `"queued"` o `null`, y **solo uno puede estar en `"held"`
 en toda la tanda**. Es el torniquete del stack: ver *El torniquete de QA* en la
 skill.
+
+### El modelo del hijo
+
+Con `choices.modelRouting.enabled: true` en `capabilities.json`, cada hijo
+recibe `/model <modelo>` por `terminal send` entre el `tui-idle` y el
+`dispatch --inject`. Es la única ventana que sirve:
+
+- `worktree create` no acepta modelo: el agente arranca con el default.
+- Un `settings.local.json` escrito en el worktree después del `create` llega
+  tarde: el agente ya leyó su configuración.
+- Después del dispatch, el hijo ya arrancó el ticket con el modelo heredado.
+
+Sirve igual con un hijo vivo (una retoma, un hijo que pasa a `childHeavy`
+porque el ticket resultó más grande): se le manda el `/model` y se sigue.
+`child` es el default; `childHeavy` (o `child`, si no está) para un ticket con
+decisiones de diseño, seguridad, migraciones o mucho alcance. Lo decide el
+conductor y lo dice al reportar el hijo creado ("con sonnet").
+
+Con el mod cargado, un `dispatch --inject` a un handle que no recibió su
+`/model` en esta sesión se niega. Con el ruteo apagado o sin
+`choices.modelRouting`, no se manda nada: el hijo hereda el default, como
+siempre.
 
 ### Agent-first, no dos pasos
 

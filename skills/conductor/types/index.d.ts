@@ -3,6 +3,13 @@ export type Gate = 'GREEN' | 'RED' | 'PENDING' | 'SINCHECKS' | 'ERROR'
 export type Pr = { repo: string; number: number; gate: Gate | null }
 
 // One open ticket of the conductor ledger, as the pane draws it.
+export type Routing = {
+  enabled: boolean
+  conductor: string | null
+  child: string | null
+  childHeavy: string | null
+}
+
 export type Row = {
   id: string
   name: string
@@ -31,6 +38,12 @@ declare module 'claude-code' {
       idleNudges: number
       // This session's Orca terminal handle; it changes when the conductor is reopened.
       handle: string | null
+      // `choices.modelRouting` of the capabilities file, re-read on every poll.
+      routing: Routing
+      // The handles this session sent a `/model` to, and which one.
+      modelSentTo: Record<string, string>
+      // An arming not yet followed by the conductor's own `/model`.
+      isModelPending: boolean
     }
   }
 }

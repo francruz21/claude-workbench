@@ -14,6 +14,7 @@ import {
   wakeText,
 } from './autonomy'
 import { ago, brief, changes, ledgerPath, parseLedger, prLabel, staleReport, statusLine, summarize } from './ledger'
+import { anchorSection, dispatchGuard, modelsSent, parseCommand, parseRouting, runsOn, statusText, withRouting } from './routing'
 
 const PANE = 'conductor-tanda'
 const POLL_MS = 5000
@@ -31,6 +32,9 @@ const woken = atom({ plugin: 'conductor', key: 'woken' } as const, [])
 const lastTurnAt = atom({ plugin: 'conductor', key: 'lastTurnAt' } as const, 0)
 const idleNudges = atom({ plugin: 'conductor', key: 'idleNudges' } as const, 0)
 const handle = atom({ plugin: 'conductor', key: 'handle' } as const, null)
+const routing = atom({ plugin: 'conductor', key: 'routing' } as const, { enabled: false, conductor: null, child: null, childHeavy: null })
+const modelSentTo = atom({ plugin: 'conductor', key: 'modelSentTo' } as const, {})
+const isModelPending = atom({ plugin: 'conductor', key: 'isModelPending' } as const, false)
 
 // The ledger's text, or null when the file is missing or unreadable.
 async function readText($: EngineInterface, path: string): Promise<string | null> {
@@ -53,6 +57,35 @@ async function workspaceOf($: EngineInterface, cwd: string): Promise<string> {
   }
 
   return cwd
+}
+
+// The capabilities file, where `choices.modelRouting` lives next to the other choices.
+async function capabilitiesPath($: EngineInterface): Promise<string> {
+  const override = await $.env.get('WORKBENCH_CAPABILITIES')
+  if (override) return override
+
+  return `${await $.env.get('HOME')}/.claude/workbench/capabilities.json`
+}
+
+async function refreshRouting($: EngineInterface): Promise<void> {
+  const next = parseRouting(await readText($, await capabilitiesPath($)))
+  if (JSON.stringify(next) !== JSON.stringify(await read($, routing))) await update($, routing, () => next)
+}
+
+// An armed conductor moves itself to its routed model, once per arming. It runs
+// from the poll, not from a hook the turn waits on, where `command.run` is refused.
+async function applyConductorModel($: EngineInterface): Promise<void> {
+  if (!(await read($, isArmed)) || !(await read($, isModelPending))) return
+  await update($, isModelPending, () => false)
+  const { enabled, conductor } = await read($, routing)
+  if (!enabled || conductor === null) return
+  if (runsOn(await $.session.model(), conductor)) return
+  try {
+    await $.command.run({ command: 'model', args: conductor })
+    $.ui.toast(`Ruteo de modelos: el conductor pasa a ${conductor}.`, { timeoutMs: 8000 })
+  } catch {
+    // the session is busy past a Stop or the host refused: the next arming retries
+  }
 }
 
 const armedKey = async ($: EngineInterface) => `armed:${await $.session.id()}`
@@ -78,6 +111,7 @@ async function arm($: EngineInterface, on: boolean): Promise<void> {
   await $.store.set(await armedKey($), on)
   if (on) {
     await update($, lastTurnAt, () => 0)
+    await update($, isModelPending, () => true)
     void $.ui.open({ id: PANE, title: 'Tanda' })
   }
 }
@@ -148,12 +182,21 @@ export const register: Register = on => {
     const wasArmed = (await $.store.get(await armedKey($))) === true
     await update($, isArmed, () => wasArmed)
     if (wasArmed) await identify($)
+    await update($, isModelPending, () => wasArmed)
+    await refreshRouting($)
     await $.command.register({
       name: 'tanda',
       description: 'Pane de la tanda del conductor; "/tanda viejos" lista los abiertos viejos, "/tanda on|off" arma o desarma esta sesión',
     })
+    await $.command.register({
+      name: 'model-routing',
+      description: 'Qué modelo usa cada agente de la tanda: "/model-routing on|off|status", "/model-routing set <conductor|child|childHeavy> <modelo>"',
+    })
     await refresh($, path, true)
-    $.clock.every(POLL_MS, () => void refresh($, path, false))
+    $.clock.every(POLL_MS, () => {
+      void refresh($, path, false)
+      void refreshRouting($).then(() => applyConductorModel($))
+    })
     $.clock.every(INBOX_MS, () => void wake($))
     if (await read($, isArmed)) void $.ui.open({ id: PANE, title: 'Tanda' })
 
@@ -187,7 +230,8 @@ export const register: Register = on => {
     const composed = await next(e)
     if (!(await read($, isArmed))) return composed
     const now = await $.clock.now()
-    const section = { id: 'conductor:anchor', text: anchorText(summarize(await read($, rows), now), now, await read($, handle)), scope: 'session' } as const
+    const text = `${anchorText(summarize(await read($, rows), now), now, await read($, handle))}\n\n${anchorSection(await read($, routing))}`
+    const section = { id: 'conductor:anchor', text, scope: 'session' } as const
 
     return { ...composed, sections: [...composed.sections, section] }
   })
@@ -195,9 +239,15 @@ export const register: Register = on => {
   // The guards are a reminder, not a lock: if one fails, the call goes on.
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
     if (!(await read($, isArmed))) return next(e)
-    const reason = bashGuard(e.command, await read($, rows))
+    const reason = bashGuard(e.command, await read($, rows)) ?? dispatchGuard(e.command, await read($, routing), await read($, modelSentTo))
+    if (reason !== null) return { deny: `conductor: ${reason}` }
+    const result = await next(e)
+    const sent = modelsSent(e.command)
+    if (sent.length > 0) {
+      await update($, modelSentTo, map => ({ ...map, ...Object.fromEntries(sent.map(s => [s.handle, s.model])) }))
+    }
 
-    return reason === null ? next(e) : { deny: `conductor: ${reason}` }
+    return result
   }).catch(($, e, next) => next(e))
 
   on('tool.call', { tool: 'AskUserQuestion' }, async ($, e, next) => {
@@ -225,6 +275,24 @@ export const register: Register = on => {
     const opened = await $.ui.open({ id: PANE, title: 'Tanda' })
 
     return opened.isPlaced ? { text: 'Pane de la tanda abierto.' } : { text: brief(summary, now) }
+  })
+
+  on('command.run', { command: 'model-routing' }, async ($, e) => {
+    const parsed = parseCommand(e.args)
+    if (parsed.kind === 'error') return { text: parsed.text }
+    const path = await capabilitiesPath($)
+    if (parsed.kind !== 'status') {
+      const patch = parsed.kind === 'toggle' ? { enabled: parsed.on } : { [parsed.role]: parsed.model }
+      try {
+        await $.fs.write(path, withRouting(await readText($, path), patch))
+      } catch {
+        return { text: `No pude escribir ${path}: no es JSON válido o no se puede escribir. No lo toqué.` }
+      }
+      if (parsed.kind === 'toggle' && parsed.on) await update($, isModelPending, () => true)
+    }
+    await refreshRouting($)
+
+    return { text: statusText(await read($, routing)) }
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {

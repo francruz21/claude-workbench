@@ -30,6 +30,9 @@ agrega es paralelismo y orden.
   pregunta una vez y se recuerda la respuesta en `choices.worktrees`.
 
 **Config**
+- `capabilities.choices.modelRouting` — opcional: qué modelo usa cada agente
+  de la tanda. Ausente o con `enabled: false` es el comportamiento de siempre
+  (todos heredan el default). Ver el paso 3.
 - `user.author` — sólo se anuncian las PRs de este handle.
 - `user.announce.channelUrl` — dónde anunciar.
 - `project.repos` — los repos del workspace, con su tag.
@@ -247,8 +250,14 @@ En una sesión armada:
   despierta una sola vez. Con hijos activos y 30 minutos sin turnos, un
   empujón para revisarlos; tres seguidos como máximo, hasta que pase algo.
 - **Guardas.** Se niegan `orchestration check --wait` sin `--types`, un
-  `worktree create` para un ticket que ya está abierto en el registro, y un
-  `AskUserQuestion` cuyos headers no empiezan con "Delicado".
+  `worktree create` para un ticket que ya está abierto en el registro, un
+  `AskUserQuestion` cuyos headers no empiezan con "Delicado", y, con el ruteo
+  de modelos prendido, un `dispatch --inject` a un hijo al que esta sesión no
+  le mandó su `/model`.
+- **Ruteo de modelos.** `/model-routing on|off|status` y `/model-routing set
+  <conductor|child|childHeavy> <modelo>` escriben `choices.modelRouting` en
+  `capabilities.json`. El ancla dice qué modelo mandarle a cada hijo, y al
+  armarse la sesión pasa sola al modelo del conductor.
 - **Vista.** El pane **Tanda**, el resumen en la status line, un toast por cada
   gate GREEN/RED, turno de QA, anuncio y cierre, y `/tanda` (`/tanda viejos`).
 
@@ -647,6 +656,27 @@ front y back quedan invisibles. Ver
 [`reference/agents.md`](reference/agents.md#hacer-visibles-en-orca-las-ramas-de-los-submódulos).
 
 Al crear cada uno, decir qué se creó y con qué nombre.
+
+**El modelo de cada hijo, si el ruteo está prendido.** Con
+`choices.modelRouting.enabled: true`, el hijo no hereda el modelo por defecto:
+con el `tui-idle` y **antes** del `dispatch --inject`, se le manda
+`/model <modelo>` con `terminal send`. `worktree create --agent claude` no
+tiene flag de modelo, y un `settings.local.json` en el worktree llega tarde: el
+agente ya arrancó dentro del mismo `create`. Qué modelo lo decide el conductor
+por ticket, sin preguntar:
+
+- `child` — el default: implementar un ticket acotado.
+- `childHeavy` — decisiones de diseño, seguridad, migraciones, o mucho
+  alcance. Si no está definido, se usa `child`.
+
+El conductor mismo corre en `choices.modelRouting.conductor`: revisa diffs y
+decide gates, así que es el rol que pide el modelo más fuerte. Con el mod
+cargado, armarse lo cambia solo. Un rol obligatorio que falta (`conductor`,
+`child`) se pregunta según `core/resolve.md`; nunca se completa en silencio.
+El usuario lo prende, lo apaga o lo ve con `/model-routing on|off|status`, y
+fija un rol con `/model-routing set <rol> <modelo>`. Apagado no se manda
+ningún `/model`. Ver
+[`reference/agents.md`](reference/agents.md#el-modelo-del-hijo).
 
 ### 4. Supervisión — resolver o escalar
 
