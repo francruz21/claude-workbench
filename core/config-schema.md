@@ -57,6 +57,7 @@ probe podria pisar la respuesta que la persona ya dio.
 | `modelRouting.conductor` | string | modelo del conductor (alias de `/model` como `opus`, o un id completo); obligatorio con `enabled` |
 | `modelRouting.child` | string | modelo del hijo que implementa un ticket acotado; obligatorio con `enabled` |
 | `modelRouting.childHeavy` | string (opcional) | modelo del hijo de un ticket pesado; ausente usa `child` |
+| `modelRouting.forbidden` | string[] (opcional) | modelos que ningun rol puede usar, prendido o apagado (`"fable"` cubre cualquier id que lo nombre); un rol con uno prohibido cuenta como ausente |
 
 `modelRouting` es una eleccion y no un hecho: que un modelo este disponible no
 dice cual quiere la persona para cada rol. Se cambia con `/model-routing

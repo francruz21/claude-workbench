@@ -15,7 +15,7 @@ import {
 } from './autonomy'
 import { ago, brief, changes, ledgerPath, parseLedger, prLabel, staleReport, statusLine, summarize } from './ledger'
 import { withoutHeartbeats } from './inject'
-import { anchorSection, dispatchGuard, modelsSent, parseCommand, parseRouting, runsOn, statusText, withRouting } from './routing'
+import { anchorSection, dispatchGuard, isForbidden, modelsSent, parseCommand, parseRouting, runsOn, statusText, withRouting } from './routing'
 
 const PANE = 'conductor-tanda'
 const POLL_MS = 5000
@@ -33,7 +33,7 @@ const woken = atom({ plugin: 'conductor', key: 'woken' } as const, [])
 const lastTurnAt = atom({ plugin: 'conductor', key: 'lastTurnAt' } as const, 0)
 const idleNudges = atom({ plugin: 'conductor', key: 'idleNudges' } as const, 0)
 const handle = atom({ plugin: 'conductor', key: 'handle' } as const, null)
-const routing = atom({ plugin: 'conductor', key: 'routing' } as const, { enabled: false, conductor: null, child: null, childHeavy: null })
+const routing = atom({ plugin: 'conductor', key: 'routing' } as const, { enabled: false, conductor: null, child: null, childHeavy: null, forbidden: [] })
 const modelSentTo = atom({ plugin: 'conductor', key: 'modelSentTo' } as const, {})
 const isModelPending = atom({ plugin: 'conductor', key: 'isModelPending' } as const, false)
 const heartbeats = atom({ plugin: 'conductor', key: 'heartbeats' } as const, {})
@@ -298,6 +298,9 @@ export const register: Register = on => {
     const parsed = parseCommand(e.args)
     if (parsed.kind === 'error') return { text: parsed.text }
     const path = await capabilitiesPath($)
+    if (parsed.kind === 'set' && isForbidden(parsed.model, (await read($, routing)).forbidden)) {
+      return { text: `${parsed.model} está prohibido (choices.modelRouting.forbidden): no lo asigno a ${parsed.role}.` }
+    }
     if (parsed.kind !== 'status') {
       const patch = parsed.kind === 'toggle' ? { enabled: parsed.on } : { [parsed.role]: parsed.model }
       try {

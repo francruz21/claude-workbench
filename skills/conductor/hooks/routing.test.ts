@@ -16,7 +16,7 @@ import {
 const caps = (modelRouting?: unknown) =>
   JSON.stringify({ detected: { gh: true }, choices: { tracker: 'linear', ...(modelRouting === undefined ? {} : { modelRouting }) } })
 
-const ON = { enabled: true, conductor: 'opus', child: 'sonnet', childHeavy: 'opus' }
+const ON = { enabled: true, conductor: 'opus', child: 'sonnet', childHeavy: 'opus', forbidden: ['fable'] }
 
 describe('parseRouting', () => {
   test('a missing file or key is off, as today', () => {
@@ -31,7 +31,15 @@ describe('parseRouting', () => {
       conductor: 'opus',
       child: null,
       childHeavy: 'claude-opus-5-5[1m]',
+      forbidden: [],
     })
+  })
+
+  test('a forbidden model in a role counts as missing', () => {
+    const routing = parseRouting(caps({ enabled: true, conductor: 'claude-fable-5-1', child: 'sonnet', forbidden: ['Fable'] }))
+    expect(routing.conductor).toBeNull()
+    expect(routing.forbidden).toEqual(['fable'])
+    expect(missing(routing)).toEqual(['conductor'])
   })
 })
 
@@ -104,6 +112,13 @@ describe('dispatchGuard', () => {
   test('lets it run once the /model was sent, before or in the same command', () => {
     expect(dispatchGuard(dispatch, ON, { term_a: 'sonnet' })).toBeNull()
     expect(dispatchGuard(`orca-ide terminal send --terminal term_a --text "/model sonnet" --enter && ${dispatch}`, ON, {})).toBeNull()
+  })
+
+  test('a /model to a forbidden model is refused, routing on or off', () => {
+    const send = 'orca-ide terminal send --terminal term_a --text "/model fable" --enter --json'
+    expect(dispatchGuard(send, ON, {})).toContain('prohibido')
+    expect(dispatchGuard(send, { ...OFF, forbidden: ['fable'] }, {})).toContain('prohibido')
+    expect(dispatchGuard(send, OFF, {})).toBeNull()
   })
 
   test('a dispatch without --inject is tracking only', () => {

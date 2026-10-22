@@ -8,7 +8,7 @@ import type { Routing } from '../types'
 export const ROLES = ['conductor', 'child', 'childHeavy'] as const
 export type Role = (typeof ROLES)[number]
 
-export const OFF: Routing = { enabled: false, conductor: null, child: null, childHeavy: null }
+export const OFF: Routing = { enabled: false, conductor: null, child: null, childHeavy: null, forbidden: [] }
 
 // An alias the `/model` command takes (`sonnet`, `opus`) or a full model id.
 const MODEL = /^[a-z0-9][a-z0-9.\-]*(\[[a-z0-9]+\])?$/i
@@ -17,8 +17,20 @@ export function isModel(value: string): boolean {
   return MODEL.test(value)
 }
 
-function modelOf(value: unknown): string | null {
-  return typeof value === 'string' && isModel(value) ? value : null
+// Whether `model` is one of the forbidden ones: `fable` matches `claude-fable-5-1`.
+export function isForbidden(model: string, forbidden: string[]): boolean {
+  const lower = model.toLowerCase()
+
+  return forbidden.some(f => lower.includes(f))
+}
+
+function forbiddenOf(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((f): f is string => typeof f === 'string' && f.trim() !== '').map(f => f.trim().toLowerCase()) : []
+}
+
+// A forbidden model in a role counts as missing: it is asked again, never used.
+function modelOf(value: unknown, forbidden: string[]): string | null {
+  return typeof value === 'string' && isModel(value) && !isForbidden(value, forbidden) ? value : null
 }
 
 // The routing in the capabilities file's text; OFF when the file or the key is missing.
@@ -29,11 +41,14 @@ export function parseRouting(text: string | null): Routing {
     const raw = data.choices?.modelRouting
     if (raw === undefined || raw === null || typeof raw !== 'object') return OFF
 
+    const forbidden = forbiddenOf(raw.forbidden)
+
     return {
       enabled: raw.enabled === true,
-      conductor: modelOf(raw.conductor),
-      child: modelOf(raw.child),
-      childHeavy: modelOf(raw.childHeavy),
+      conductor: modelOf(raw.conductor, forbidden),
+      child: modelOf(raw.child, forbidden),
+      childHeavy: modelOf(raw.childHeavy, forbidden),
+      forbidden,
     }
   } catch {
     return OFF
@@ -61,7 +76,8 @@ export function missing(routing: Routing): Role[] {
 }
 
 export function statusText(routing: Routing): string {
-  if (!routing.enabled) return 'Ruteo de modelos: off. Los hijos y el conductor heredan el modelo por defecto.'
+  const banned = routing.forbidden.length > 0 ? `\nProhibidos para cualquier rol: ${routing.forbidden.join(', ')}.` : ''
+  if (!routing.enabled) return `Ruteo de modelos: off. Los hijos y el conductor heredan el modelo por defecto.${banned}`
   const lines = [
     'Ruteo de modelos: on.',
     `- conductor: ${routing.conductor ?? '(falta)'}`,
@@ -71,7 +87,7 @@ export function statusText(routing: Routing): string {
   const gaps = missing(routing)
   if (gaps.length > 0) lines.push(`Faltan: ${gaps.join(', ')}. Completalo con /model-routing set <rol> <modelo>.`)
 
-  return lines.join('\n')
+  return lines.join('\n') + banned
 }
 
 // The section the conductor's anchor carries, re-read on every request.
@@ -119,8 +135,11 @@ export function modelsSent(command: string): { handle: string; model: string }[]
 // A reason to refuse this Bash command under routing, or null to let it run.
 // `sent` is the handles this session already sent a `/model` to.
 export function dispatchGuard(command: string, routing: Routing, sent: Record<string, string>): string | null {
+  const sending = modelsSent(command)
+  const banned = sending.find(s => isForbidden(s.model, routing.forbidden))
+  if (banned) return `${banned.model} está prohibido (choices.modelRouting.forbidden). Elegí otro modelo para ${banned.handle}.`
   if (!routing.enabled) return null
-  const delivered = new Set([...Object.keys(sent), ...modelsSent(command).map(s => s.handle)])
+  const delivered = new Set([...Object.keys(sent), ...sending.map(s => s.handle)])
 
   for (const part of parts(command)) {
     if (!DISPATCH_INJECT.test(part) || !/--inject\b/.test(part)) continue

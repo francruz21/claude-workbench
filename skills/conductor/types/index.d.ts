@@ -8,6 +8,8 @@ export type Routing = {
   conductor: string | null
   child: string | null
   childHeavy: string | null
+  // Models no role may run on (`fable` matches any Fable id); applies on or off.
+  forbidden: string[]
 }
 
 export type Row = {
