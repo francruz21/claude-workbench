@@ -50,6 +50,9 @@ declare module 'claude-code' {
       heartbeats: Record<string, number>
       // Orca injected mail into this session: the injection rules over `check --wait`.
       isInjected: boolean
+      // prompt.compose ran for this conductor: the anchor reaches the system
+      // prompt there, and stops riding on each prompt.
+      isComposed: boolean
     }
   }
 }

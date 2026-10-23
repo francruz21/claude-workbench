@@ -29,6 +29,7 @@ const handle = atom({ plugin: 'ticket-workflow', key: 'handle' } as const, null)
 const conductor = atom({ plugin: 'ticket-workflow', key: 'conductor' } as const, null)
 const repos = atom({ plugin: 'ticket-workflow', key: 'repos' } as const, [])
 const woken = atom({ plugin: 'ticket-workflow', key: 'woken' } as const, [])
+const isComposed = atom({ plugin: 'ticket-workflow', key: 'isComposed' } as const, false)
 
 async function run($: EngineInterface, argv: string[], cwd?: string): Promise<string | null> {
   try {
@@ -148,10 +149,20 @@ export const register: Register = on => {
   on('prompt.compose', async ($, e, next) => {
     const composed = await next(e)
     if (!(await isChild($))) return composed
+    await update($, isComposed, () => true)
     const text = anchorText(await read($, handle), await read($, repos), await read($, conductor))
 
     return { ...composed, sections: [...composed.sections, { id: 'ticket-workflow:anchor', text, scope: 'session' } as const] }
   })
+
+  // An organization's security plugin can skip a user plugin's prompt.compose.
+  // Until compose is seen running, the anchor rides on each prompt as context.
+  on('prompt.submit', async ($, e, next) => {
+    if (e.command !== undefined || (await read($, isComposed)) || !(await isChild($))) return next(e)
+    const text = anchorText(await read($, handle), await read($, repos), await read($, conductor))
+
+    return next({ ...e, context: [...(e.context ?? []), text] })
+  }).catch(($, e, next) => next(e))
 
   // The guards are a reminder, not a lock: if one fails, the call goes on.
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {

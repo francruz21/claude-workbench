@@ -6,6 +6,7 @@ import type { On } from 'claude-code'
 function host(on: On, opts: { isDispatched: boolean }) {
   const inbox: object[] = []
   const prompts: string[] = []
+  const contexts: (readonly string[])[] = []
   const clock = mock.clock(on, { now: 0 })
   mock.env(on, { ORCA_PANE_KEY: 'tab2:leafB' })
   mock.store(on)
@@ -15,6 +16,7 @@ function host(on: On, opts: { isDispatched: boolean }) {
   on('skill.prompt', async ($, e) => ({ text: e.text }))
   on('prompt.submit', async ($, e) => {
     prompts.push(e.text)
+    contexts.push(e.context ?? [])
 
     return { text: e.text } as never
   })
@@ -43,7 +45,7 @@ function host(on: On, opts: { isDispatched: boolean }) {
     return { value: { exitCode: 1, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
   })
 
-  return { inbox, prompts, clock }
+  return { inbox, prompts, contexts, clock }
 }
 
 const start = ($: any) => $.session.start({ cwd: '/wt/repo', surface: 'terminal', isInteractive: true })
@@ -97,4 +99,19 @@ test('a session that never loaded the skill is left alone', async ($: any, on: O
   host(on, { isDispatched: true })
   await start($)
   expect((await bash($, 'orca-ide orchestration send --type heartbeat')).deny).toBeUndefined()
+})
+
+test('with prompt.compose skipped, the anchor rides on each prompt until compose runs', async ($: any, on: On) => {
+  const { contexts } = host(on, { isDispatched: true })
+  await start($)
+  await $.skill.prompt({ skill: 'ticket-workflow', text: 'skill body' })
+
+  // An organization's security plugin skipped compose: the anchor goes as context.
+  await $.prompt.submit({ text: 'seguí', origin: { kind: 'composer' } } as never)
+  expect(contexts.at(-1)?.length).toBe(1)
+
+  // Once compose runs, the system prompt carries it and the context stops.
+  await compose($)
+  await $.prompt.submit({ text: 'seguí', origin: { kind: 'composer' } } as never)
+  expect(contexts.at(-1)).toEqual([])
 })

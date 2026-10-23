@@ -20,6 +20,7 @@ const LEDGER = JSON.stringify({
 function host(on: On) {
   const inbox: object[] = []
   const prompts: string[] = []
+  const contexts: (readonly string[])[] = []
   const clock = mock.clock(on, { now: NOW })
   mock.env(on, { HOME: '/h', WORKBENCH_WORKSPACE: '/w' })
   mock.store(on)
@@ -46,13 +47,14 @@ function host(on: On) {
   on('skill.prompt', async ($, e) => ({ text: e.text }))
   on('prompt.submit', async ($, e) => {
     prompts.push(e.text)
+    contexts.push(e.context ?? [])
 
     return { text: e.text } as never
   })
   on('prompt.compose', async () => ({ sections: [{ id: 'core', text: 'core', scope: 'shared' as const }] }))
   on('tool.call', async () => ({ result: 'ran' }) as never)
 
-  return { inbox, prompts, clock }
+  return { inbox, prompts, contexts, clock }
 }
 
 // The tests drive the engine with partial inputs, so `$` is loosely typed here.
@@ -146,4 +148,19 @@ test('in the armed session Orca heartbeats go to the pane and the rest goes thro
   // Having seen the injection, a check --wait is refused: it would come back empty.
   const denied = await $.tool.call({ tool: 'Bash', tool_use_id: 't1', command: 'orca orchestration check --wait --types worker_done' } as never)
   expect(denied.deny).toContain('inbox')
+})
+
+test('with prompt.compose skipped, the anchor rides on each prompt until compose runs', async ($: any, on: On) => {
+  const { contexts } = host(on)
+  await start($)
+  await $.skill.prompt({ skill: 'conductor', text: 'skill body' })
+
+  // An organization's security plugin skipped compose: the anchor goes as context.
+  await $.prompt.submit({ text: 'seguí', origin: { kind: 'composer' } } as never)
+  expect(contexts.at(-1)?.length).toBe(1)
+
+  // Once compose runs, the system prompt carries it and the context stops.
+  await compose($)
+  await $.prompt.submit({ text: 'seguí', origin: { kind: 'composer' } } as never)
+  expect(contexts.at(-1)).toEqual([])
 })
