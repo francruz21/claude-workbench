@@ -232,6 +232,30 @@ El registro **también es un guarda, no sólo un apunte**: `announced` se niega 
 anotar el anuncio si los PRs del ticket no están todos en `GREEN`, y `labelled`
 se niega si no hay anuncio registrado. Un reloj no puede saltear eso.
 
+**El mod te sostiene el ciclo.** Esta carpeta es también un mod de Claude Code
+(`hooks/register.tsx`). Cargar esta skill arma la sesión como conductor (y
+queda armada si la sesión se reanuda); `/tanda on|off` la arma o desarma a mano.
+En una sesión armada:
+
+- **Ancla.** Cada request lleva una sección del system prompt con el `brief` de
+  la tanda y tu ciclo. Sobrevive a la compactación: no hace falta que el
+  usuario te lo recuerde.
+- **Despertador.** Cada minuto mira `orchestration inbox` (no consume) y el
+  registro. Un `worker_done`, `escalation` o `decision_gate` sin leer de un hijo
+  de la tanda, o un ticket con todas sus PRs en GREEN sin anunciar, te manda un
+  prompt que arranca un turno en cuanto la sesión queda libre. Cada mensaje
+  despierta una sola vez. Con hijos activos y 30 minutos sin turnos, un
+  empujón para revisarlos; tres seguidos como máximo, hasta que pase algo.
+- **Guardas.** Se niegan `orchestration check --wait` sin `--types`, un
+  `worktree create` para un ticket que ya está abierto en el registro, y un
+  `AskUserQuestion` cuyos headers no empiezan con "Delicado".
+- **Vista.** El pane **Tanda**, el resumen en la status line, un toast por cada
+  gate GREEN/RED, turno de QA, anuncio y cierre, y `/tanda` (`/tanda viejos`).
+
+Lee el registro, nunca lo escribe: lo que no anotes con el script no aparece. Por
+eso el turno de QA se anota (`set <ticket> qaTurn held|queued`, y `""` al
+liberarlo), no se recuerda.
+
 ### Olvidar al hijo
 
 Cuando un ticket quedó anunciado y limpiado, se cierra:

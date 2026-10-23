@@ -1,0 +1,6 @@
+{
+  "name": "ticket-workflow",
+  "version": "0.1.0",
+  "description": "Keeps a dispatched child on its ticket: anchor, wake on the conductor's reply, full ask answers, guards",
+  "types": "./types/index.d.ts"
+}

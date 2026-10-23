@@ -54,6 +54,23 @@ Si en cambio esta skill se invocó **sin** conductor (no hay orquestación, o el
 usuario la pidió explícitamente para un ticket en este checkout), el interlocutor
 es el usuario directo y todo lo demás del flujo no cambia.
 
+**El mod te sostiene en el ticket.** Esta carpeta es también un mod de Claude
+Code (`hooks/register.ts`). Cargar esta skill arma la sesión (`/hijo on|off` a
+mano, `/hijo` muestra el estado), y si Orca tiene una tarea despachada a tu
+terminal:
+
+- **Ancla.** Cada request lleva tu handle, a qué handle contestar, y dónde está
+  cada repo del worktree que esté en una rama de trabajo: commits sin publicar,
+  archivos sin commitear, rama publicada o no (medido con `ls-remote`).
+- **`ask` entero.** Después de cada `orchestration ask` el mod lee del inbox la
+  respuesta completa y te la agrega: actuá sobre esa, no sobre la cola cortada.
+- **Despertador.** Un mensaje del conductor que no leíste te arranca un turno,
+  una vez por mensaje: también después de un `worker_done`.
+- **Guardas.** Se niegan el heartbeat sin `run_in_background`, un `worktree
+  create`, el `Agent` y el `AskUserQuestion`.
+
+Sin conductor no hace nada de eso: el interlocutor es el usuario.
+
 ## Las preguntas no se saltean nunca
 
 Hay cinco puntos donde decide el usuario, no la skill:
