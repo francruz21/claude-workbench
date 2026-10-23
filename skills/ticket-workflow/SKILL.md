@@ -124,6 +124,12 @@ fuera de él.
   trabajo, y la regla de edición no los alcanza. Cualquier **otro** estado
   (`Done`, `Canceled`, `Backlog`, `Blocked`, volver a `Todo`) sí necesita una
   orden del usuario.
+- **Las labels de resultado de QA también son flujo, no edición** — las de
+  `qaResultLabels` del config, y solo esas. Se mueven en dos momentos y en
+  ningún otro: se **saca** la de falla al publicar la corrección de un ticket
+  devuelto (paso 11), y se **pone** la de pasó o la de falla al cerrar un QA
+  que te ordenaron (ver *QA por orden*). Cualquier otra label sigue la regla
+  de edición de arriba.
 - **No se tocan otros tickets**, ni para comentar, ni para linkear, ni para
   cerrarlos por duplicado.
 
@@ -180,8 +186,9 @@ Sin orden no se edita, y tampoco se pregunta si habría que editar. Ofrecer un
 cambio de triage que nadie pidió es empezar a hacer triage.
 
 Esto **no** incluye los dos pasos de estado del propio ticket (`In Progress` al
-cortar la rama, `In Review` al abrir la PR): esos son el flujo de trabajo, van
-solos, y jamás se frenan a esperar una orden.
+cortar la rama, `In Review` al abrir la PR) ni las labels de resultado de QA en
+los dos momentos que les corresponden: esos son el flujo de trabajo, van solos,
+y jamás se frenan a esperar una orden.
 
 ## Requiere
 
@@ -212,6 +219,7 @@ solos, y jamás se frenan a esperar una orden.
 - `project.orca.worktreeLevel` — a qué nivel se crea el worktree.
 - `project.reviewers` — reviewers posibles de este repo, y el default.
 - `project.qa` — cómo levantar la app local para el QA del paso 8, y cómo bajarla al cerrarlo.
+- `project.qaResultLabels` — el grupo y las dos labels que marcan si un ticket pasó o falló el QA (paso 11 y *QA por orden*).
 
 Ante un campo ausente o una capability que falta, seguir `core/resolve.md`.
 No completar en silencio: es la misma regla que ya aplica a los cinco gates
@@ -297,6 +305,10 @@ local, no necesariamente algo para compartir con el equipo).
     preguntar**. El config lo declara en `environmentLabels`.
   - **Label de tipo** — `Bug`, `Feature`, `Improvement` u otras planas. Es la
     propuesta del tipo de rama del paso 4, según el `typeLabelMap` del config.
+  - **Label de resultado de QA** — la del grupo `qaResultLabels.group`. Si el
+    ticket trae `qaResultLabels.fail`, **es un ticket devuelto**: el trabajo es
+    corregir lo que falló, y el último comentario de QA dice qué fue. Anotarlo,
+    porque el paso 11 saca esa label al publicar la corrección.
   - **El resto** (módulo, release, área de producto) no se usa para decidir
     rama ni tipo. No inventarles significado.
 
@@ -743,6 +755,16 @@ commit y la PR no hay ningún mensaje humano obligatorio, y ese es el punto.
 armarlo antes que nada — el paso 13 verifica el estado real de todas formas, así
 que re-armarlo no puede duplicar ni adelantar nada.
 
+**Si el ticket vino devuelto, sacarle la label de falla — recién con la rama
+publicada.** Si en el paso 2 el ticket traía `qaResultLabels.fail`, en cuanto
+la corrección queda medida en el remoto (`ls-remote`, con `"agent"` al salir
+`publish-branch.sh`, con `"human"` cuando emite el watcher) se le saca esa
+label, y solo esa: las demás del ticket quedan como están. No se pone la de
+pasó: eso lo dice el próximo QA, no quien corrigió. Antes de publicar no se
+saca nunca — un commit local no le sirve a nadie para volver a probar. Si la
+label ya no estaba (alguien la sacó a mano), no hay nada que hacer. Va en el
+reporte en una línea: "saqué `<fail>` de TCK-N: la corrección está publicada".
+
 ### 12. Comentario en el ticket, con capturas embebidas — automático
 
 **Cuándo: después del commit, sin esperar el push.** Las capturas ya existen —
@@ -835,7 +857,9 @@ conductor pasa textual— se arregla **en la misma rama y la misma PR**:
 2. Si el arreglo cambia algo que se probó en el paso 8, repetir esos casos.
 3. Commit, con el gate 4 como siempre.
 4. `publish-branch.sh` otra vez. Empuja solo si es fast-forward sobre lo
-   publicado; si no, para, y no se fuerza.
+   publicado; si no, para, y no se fuerza. Si el ticket tiene
+   `qaResultLabels.fail` —volvió del QA con la PR ya abierta—, se le saca
+   igual que en el paso 11.
 5. Esperar el job de tests **del SHA nuevo**, no el rollup de la PR, y
    reportar el resultado hacia arriba. El anuncio no es de este flujo: con
    conductor, lo decide él.
@@ -856,6 +880,32 @@ usuario son los cinco gates: el tipo de rama (paso 4), **el OK del cráneo
 confirmación de PR (paso 13). El paso 11 no es un gate: con `"agent"` lo
 autoriza el commit, y con `"human"` no hay push que confirmar. Que el
 config exista ahorra el onboarding, no los gates.
+
+### QA por orden — el resultado queda en una label
+
+Distinto del paso 8. El paso 8 es quien implementó probando su propio trabajo
+antes de commitear, y **no pone ninguna label**. Esto es cuando el usuario (o el
+conductor, transportando su orden) manda hacer QA de un ticket ya entregado:
+"hacé QA de TCK-N", "probá TCK-N en dev".
+
+1. Leer el ticket y sacar los casos de prueba, como en el paso 2. Si la orden no
+   dice en qué ambiente probar y el ticket no lo deja claro por su label de
+   ambiente, preguntar **ese** dato; no se asume local.
+2. Ejecutarlos con las mismas reglas de navegador y capturas del paso 8.
+3. Cerrar con una sola label del grupo `qaResultLabels.group`:
+   - **Pasaron todos** → `qaResultLabels.pass`.
+   - **Falló al menos uno** → `qaResultLabels.fail`, y un comentario en el
+     ticket con cada caso que falló: qué se hizo, qué se esperaba, qué pasó, y
+     su captura embebida (mismo procedimiento que el paso 12). Ese comentario
+     es lo que lee quien corrija; sin él, la label sola no dice qué arreglar.
+   Las dos son excluyentes: poner una saca la otra. Si el grupo del tracker no
+   es de selección única, sacar la otra a mano.
+4. Reportar el resultado en una línea, con la label que quedó.
+
+El QA por orden no mueve el estado del ticket ni toca ninguna otra label: eso
+sigue necesitando su propia orden. Y un caso que no se pudo ejecutar (sin
+acceso, sin datos, ambiente caído) no es un caso fallado: se reporta como
+bloqueado y no se pone ninguna label hasta poder correrlo.
 
 ## Checklist
 
@@ -884,7 +934,7 @@ config exista ahorra el onboarding, no los gates.
 - [ ] El comentario arranca en lenguaje de negocio, con una sola línea técnica y sin jerga ni identificadores de código en la parte de negocio.
 - [ ] No se creó ningún ticket, sub-issue ni follow-up sin orden del usuario o sin su sí explícito ante un hallazgo grave; el resto de lo que apareció fuera del alcance se anotó en el reporte de cierre.
 - [ ] Un hallazgo grave (datos, seguridad, ambiente publicado, bloqueante del propio ticket) se avisó en el momento, no al cierre.
-- [ ] No se editó ningún ticket —assignee, prioridad, estimación, labels, título, descripción, due date, parent— sin una orden explícita del usuario, ni se ofreció editarlo.
+- [ ] No se editó ningún ticket —assignee, prioridad, estimación, labels, título, descripción, due date, parent— sin una orden explícita del usuario, ni se ofreció editarlo. La única excepción son las labels de `qaResultLabels`, en sus dos momentos.
 - [ ] Los dos pasos de estado del propio ticket (`In Progress` al cortar la rama, `In Review` al abrir la PR) se hicieron solos, sin orden y sin preguntar.
 - [ ] Antes de abrir la PR se verificó que la rama ya tuviera upstream (`@{u}`); si no lo tenía, quedó (o se volvió a armar) el watcher del paso 11 en vez de esperar sin más, sin pushear ni volver a preguntar.
 - [ ] La PR apunta a la rama de nacimiento y no a `main`, y quedó con reviewer asignado en GitHub.
@@ -894,6 +944,8 @@ config exista ahorra el onboarding, no los gates.
 - [ ] No se lanzó ningún subagente: el QA, la exploración y la revisión del diff los hizo esta misma sesión.
 - [ ] Con `"human"`, al dejar la rama lista para publicar quedó un watcher armado, y la PR salió cuando la rama apareció en el remoto, sin que nadie avisara.
 - [ ] Los arreglos del review fueron a la misma rama y la misma PR, sin force, y se esperó el job del SHA nuevo.
+- [ ] Si el ticket vino con `qaResultLabels.fail`, esa label se sacó recién con la corrección publicada y medida en el remoto, y no se puso la de pasó.
+- [ ] En un QA por orden, quedó exactamente una label de `qaResultLabels` — `pass` si pasaron todos, `fail` con comentario de los casos fallados si no — y el estado del ticket no se tocó.
 
 ## Ejemplos
 
