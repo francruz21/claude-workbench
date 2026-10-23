@@ -256,7 +256,8 @@ En una sesión armada:
   bloque con solo heartbeats no entra.
 - **Guardas.** Se niegan `orchestration check --wait` sin `--types`, un
   `worktree create` para un ticket que ya está abierto en el registro, un
-  `AskUserQuestion` cuyos headers no empiezan con "Delicado", y, con el ruteo
+  `AskUserQuestion` cuyos headers no empiezan con "Crítico" (el mensaje dice
+  qué no es crítico: rama base, contratos, permisos, auth, A/B), y, con el ruteo
   de modelos prendido, un `dispatch --inject` a un hijo al que esta sesión no
   le mandó su `/model`.
 - **Ruteo de modelos.** `/model-routing on|off|status` y `/model-routing set
@@ -404,7 +405,45 @@ Reglas para una sesión que arranca al lado de otra:
 
 ## Qué decide el conductor, y qué te pregunta
 
-El default es `relayGates: "delicate-only"`. El conductor **resuelve el gate
+### Con `relayGates: "critical-only"` — el conductor decide, y solo sube lo crítico
+
+El conductor tiene el contexto de la tanda, lee el diff y conoce el código:
+**decide todo gate que tenga una recomendación**, aunque toque arquitectura, un
+contrato, permisos, auth, un flujo de negocio o el alcance. Una decisión
+delicada se toma igual, con dos cosas:
+
+- **Una condición de freno concreta para el hijo** ("si el cambio abre X, frená
+  y avisá"), en vez de una pregunta al usuario.
+- **Que quede escrita en la PR**: qué se decidió y por qué, para que el reviewer
+  la vea.
+
+Si el mensaje que estás por mandar dice "mi recomendación es X", es la señal de
+que no había que mandarlo: se toma X y se reporta en una línea.
+
+**Sube al usuario solo lo crítico**, y nada más:
+
+- **Escribir fuera de local**: prod, una DB o un ambiente compartido.
+- **Push, merge o aprobar PRs.**
+- **Crear o editar tickets.** La única excepción es la *parte N* de un alcance
+  que el conductor recortó al aprobar un plan: esa la crea él, porque es parte
+  del recorte.
+- **Tocar un repo que el ticket no nombra.**
+- **Lo que necesita a otra persona**, o contradice el ticket sin evidencia en el
+  código que lo respalde.
+- **Un `escalation`**: un hijo bloqueado se muestra tal cual.
+
+Dos caminos con recomendación son una decisión del conductor, no una pregunta.
+Sin label de ambiente, la rama base es `project.baseBranch`. Ante duda, **se
+decide** con condición de freno: con este modo, el costo de preguntar es un hijo
+parado y un usuario interrumpido.
+
+**Lo que ya se preguntó no se repite.** Una pregunta crítica se hace una vez; si
+el usuario no contestó, el resto de la tanda sigue, y el aviso de rutina no la
+vuelve a nombrar hasta que conteste.
+
+### Con `relayGates: "delicate-only"`
+
+El default de quien no lo configuró es `relayGates: "delicate-only"`. El conductor **resuelve el gate
 cuando hay una respuesta recomendada que puede defender en una línea**, y escala
 solo lo delicado. No es autonomía: es sacar al usuario del camino de las
 decisiones que ya venían tomadas por el código, el config o el ticket.
@@ -449,8 +488,9 @@ que encuentre vuelve **al hijo** con `reply`, nunca se arregla desde acá.
 - **No hay señal para la rama base**: sin label de ambiente, o con `draft` /
   `design`.
 
-Ante duda entre resolver y preguntar, **se pregunta**. El costo de preguntar es
-un mensaje; el de decidir mal algo delicado es rehacer trabajo ajeno.
+Con `delicate-only`, ante duda entre resolver y preguntar, **se pregunta**. El
+costo de preguntar es un mensaje; el de decidir mal algo delicado es rehacer
+trabajo ajeno. (Con `critical-only` es al revés: ver arriba.)
 
 ### Cómo se reporta cada caso
 
@@ -696,8 +736,9 @@ Cuando llega un gate: leer el diff del hijo, pasarle `code-review`, y aplicar el
 test de *Qué decide el conductor, y qué te pregunta*.
 
 - **Resoluble** → responder con `reply` y reportarlo en una línea.
-- **Delicado** → subirlo al usuario, esperar, y devolver su respuesta con
-  `reply`. **De a uno**, en el orden en que llegaron.
+- **Escalable según `relayGates`** (con `critical-only`, solo lo crítico) →
+  subirlo al usuario una vez, y devolver su respuesta con `reply`. **De a uno**,
+  en el orden en que llegaron. Mientras espera, el resto de la tanda sigue.
 - **Hallazgo de review** → vuelve al hijo con `reply`, no al usuario.
 
 Ver [`reference/agents.md`](reference/agents.md#resolver-o-escalar-un-gate).
@@ -1042,8 +1083,10 @@ conductor es la mitad del trabajo hecha.
   poder referirse a ellos.
 - Cuando un agente termina, resumir en una línea qué hizo, antes de pasar al
   siguiente.
-- El default es `relayGates: "delicate-only"`: decidir lo recomendado, escalar
-  lo delicado. `"judgment-only"` y `"all"` existen para quien quiera más control
+- Con `relayGates: "critical-only"` se decide todo lo que tenga recomendación y
+  solo sube lo crítico (prod, push/merge, tickets, otro repo, otra persona). El
+  default `"delicate-only"` decide lo recomendado y escala lo delicado.
+  `"judgment-only"` y `"all"` existen para quien quiera más control
   — `"all"` releva los cinco gates de cada hijo, y con dos o tres tickets en
   paralelo eso es mucho ruido.
 - Al resolver un gate, decir el criterio en la misma línea ("sigue el patrón de

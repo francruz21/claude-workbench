@@ -111,7 +111,8 @@ test('loading the conductor skill arms the session', async ($: any, on: On) => {
   expect(prompts.length).toBe(1)
 })
 
-test('idle nudges stop after three in a row and restart when the person speaks', async ($: any, on: On) => {
+// Seven 31-minute jumps run some 2,600 poll ticks: it sits near the default 5 s.
+test('idle nudges stop after three in a row and restart when the person speaks', { timeoutMs: 15_000 }, async ($: any, on: On) => {
   const { prompts, clock } = host(on)
   on('turn.complete', async ($, e) => ({ text: e.answer }))
   await start($)

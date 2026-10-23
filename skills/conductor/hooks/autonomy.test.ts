@@ -125,12 +125,14 @@ describe('askGuard', () => {
     expect(askGuard(['Approach'])).toContain('Sos el conductor')
   })
 
-  test('lets a question tagged delicate through', () => {
-    expect(askGuard(['Delicado: prod', 'delicada'])).toBe(null)
+  test('lets a question tagged critical through', () => {
+    expect(askGuard(['Crítico: prod', 'critica'])).toBe(null)
   })
 
   test('one untagged question in the set is enough to refuse', () => {
-    expect(askGuard(['Delicado', 'Scope'])).not.toBe(null)
+    expect(askGuard(['Crítico', 'Scope'])).not.toBe(null)
+    // The old tag no longer passes: it had become the way around the guard.
+    expect(askGuard(['Delicado: base'])).toContain('rama base')
   })
 })
 

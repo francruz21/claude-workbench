@@ -57,7 +57,7 @@ export function wakeText(pending: Pending[], announce: string[]): string | null 
   const lines = ['[conductor] Hay trabajo de la tanda esperándote; seguí tu ciclo sin esperar al usuario.']
   for (const p of pending) lines.push(`- ${p.ticket}: ${p.type}${p.subject ? ` (${p.subject})` : ''} sin atender (${p.id})`)
   for (const id of announce) lines.push(`- ${id}: PRs en GREEN, sin anunciar`)
-  lines.push('Leelo con `inbox` (no consume), resolvé con tu recomendación, y reportá en una línea por ticket.')
+  lines.push('Leelo con `inbox` (no consume), resolvé con tu recomendación, y reportá en una línea por ticket. No le repitas al usuario lo que ya le preguntaste.')
 
   return lines.join('\n')
 }
@@ -65,7 +65,7 @@ export function wakeText(pending: Pending[], announce: string[]): string | null 
 export function idleText(summary: Summary, nowMs: number): string {
   return [
     '[conductor] Pasó un rato sin actividad y la tanda tiene tickets activos.',
-    'Revisá el estado de cada hijo (`terminal read` / `inbox`), destrabá lo que esté parado, y reportá solo lo que cambió.',
+    'Revisá el estado de cada hijo (`terminal read` / `inbox`), destrabá lo que esté parado decidiendo vos, y reportá solo lo que cambió. Si nada cambió, no escribas nada al usuario: no le repitas decisiones pendientes.',
     '',
     brief(summary, nowMs),
   ].join('\n')
@@ -87,7 +87,7 @@ ${brief(summary, nowMs)}
 
 Tu ciclo, sin esperar a que el usuario te lo recuerde:
 1. ${mail}
-2. Cada gate lo resolvés vos con tu recomendación y lo reportás en una línea. Al usuario solo le subís: escribir en prod o en ambientes compartidos, push/merge, crear tickets, tocar el wrapper; si lo preguntás con AskUserQuestion, cada header empieza con "Delicado". No le repitas decisiones pendientes en cada aviso.
+2. Cada gate lo decidís vos con tu recomendación —también contratos, permisos, auth, arquitectura, alcance o A/B—, con una condición de freno para el hijo y la decisión escrita en la PR, y lo reportás en una línea. Al usuario solo le subís lo crítico: escribir fuera de local (prod, ambientes compartidos), push/merge, crear o editar tickets (salvo la parte N de un recorte), tocar un repo que el ticket no nombra, o algo que necesita a otra persona. Si con AskUserQuestion, cada header empieza con "Crítico". Lo ya preguntado no se repite.
 3. Un ticket con todas sus PRs en GREEN y sin anunciar: se anuncia (cola por ticket, \`announce-arm\` primero).
 4. Anunciado: se limpia el worktree y se cierra el ticket, sin esperar el merge.
 5. Turno de QA: se concede de a uno y se anota con \`conductor-ledger.sh set <ticket> qaTurn held|queued\` (\`""\` al liberarlo).
@@ -124,14 +124,14 @@ export function bashGuard(command: string, rows: Row[], isInjected = false): str
   return null
 }
 
-export const DELICATE = /^\s*delicad[oa]\b/i
+export const CRITICAL = /^\s*cr[ií]tic[oa]\b/i
 
-// The conductor decides what has a defensible recommendation. A question it
-// still has to ask is tagged by starting its header with "Delicado".
+// The conductor decides whatever has a recommendation. A question it still has
+// to ask is critical, and tagged by starting its header with "Crítico".
 export function askGuard(headers: string[]): string | null {
-  if (headers.length > 0 && headers.every(header => DELICATE.test(header))) return null
+  if (headers.length > 0 && headers.every(header => CRITICAL.test(header))) return null
 
-  return 'Sos el conductor: decidí con tu recomendación y reportá en una línea. Solo se pregunta lo que no tiene una recomendación defendible o es irreversible fuera de local (prod, push/merge, crear tickets, tocar el wrapper); si es eso, volvé a preguntar con cada header empezando por "Delicado".'
+  return 'Sos el conductor: decidí con tu recomendación, ponele al hijo una condición de freno, pedile que lo deje escrito en la PR, y reportá en una línea. NO son críticos y se deciden: la rama base (sin label, project.baseBranch), un contrato, permisos, auth, arquitectura, el alcance, un plan, dos opciones con recomendación. Crítico es solo: escribir fuera de local (prod, ambientes compartidos), push/merge, crear o editar tickets (salvo la parte N de un recorte), tocar un repo que el ticket no nombra, o algo que necesita a otra persona. Si y solo si es eso, cada header empieza con "Crítico".'
 }
 
 // This terminal's handle in `orca-ide terminal list --json`, by the pane key
