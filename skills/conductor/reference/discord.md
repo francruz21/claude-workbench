@@ -36,19 +36,26 @@ reales:
 TICKET='TCK-123'
 
 gh pr list --repo "$SLUG" --state open --limit 30 --author "$AUTHOR" \
-  --json number,title,url,baseRefName,headRefName,isDraft,author,labels,statusCheckRollup \
-| jq -c --arg gate "$GATE" --arg lbl "$LABEL" --arg ticket "$TICKET" '
+  --json number,title,url,baseRefName,headRefName,isDraft,labels \
+| jq -c --arg lbl "$LABEL" --arg ticket "$TICKET" '
   [ .[]
     | select(.isDraft == false)
     | select(.headRefName | test($ticket; "i"))
     | select([.labels[].name] | index($lbl) | not)
-    | select([.statusCheckRollup[] | select(.workflowName == $gate)] | length > 0)
-    | select([.statusCheckRollup[] | select(.workflowName == $gate)
-              | select(.status != "COMPLETED" or .conclusion != "SUCCESS")] | length == 0)
     | { number, title, url, base: .baseRefName, head: .headRefName } ]'
+
+# El veredicto del gate, PR por PR: solo GREEN se anuncia.
+"$WB/tools/conductor-ledger.sh" pr-state --repo "$SLUG" --number <n> --ticket "$TICKET"
 ```
 
-Los tres guardas que hacen que el filtro no mienta:
+El filtro elige **qué** PRs son del ticket; si están verdes lo dice `pr-state`,
+el mismo cálculo que `announce-arm` vuelve a hacer antes de habilitar el envío
+(ver *Vigilar el gate de un PR* en `agents.md`). Ya no se decide con
+`statusCheckRollup`: mezcla corridas, toma un job salteado por la corrida de un
+`gh pr edit` como si hubiera corrido, y acotarlo a un solo workflow dejaba
+anunciar con `claude-review` en rojo.
+
+Los guardas que hacen que el filtro no mienta:
 
 - **`test($ticket)` sobre `headRefName`** — sin este guarda, la fase 5 barre
   *todos* los PRs verdes sin anunciar del autor, incluidos los de otros tickets y
@@ -60,12 +67,12 @@ Los tres guardas que hacen que el filtro no mienta:
   ser la que el usuario confirmó. La convención de ramas
   (`<tipo>/TCK-<n>-<slug>`) hace que el id del ticket esté siempre en
   `headRefName`, así que el filtro es exacto, no heurístico.
-- **`length > 0`** — un PR sin CI corrida tiene una lista vacía de checks del
-  gate, y "todos los checks en verde" sobre una lista vacía es verdadero. Sin
-  este guarda se anuncian PRs que nunca se probaron.
-- **Filtrar por `workflowName == $gate`**, no por el rollup de arriba — el
-  rollup mete `claude-review` y cualquier otro workflow en la cuenta, así que un
-  PR queda "no verde" por algo que no es el gate, o al revés.
+- **Un PR sin CI corrida no es verde.** `pr-state` da `SINCHECKS` si un
+  workflow del gate no corrió en el SHA, o si un job de `gateRequired` no pasó
+  en ninguna corrida.
+- **Todos los workflows del gate**, no uno: con `gateWorkflow` como lista
+  (tests **y** review automático), un `claude-review` en rojo frena el anuncio.
+  Un workflow fuera de la lista (otro bot, Lighthouse) no cuenta.
 
 `--author "$AUTHOR"` es lo que hace que solo se anuncien los PRs propios.
 `$TICKETS` es lo que hace que solo se anuncien **los que el usuario pidió**: las
