@@ -36,7 +36,10 @@ agrega es paralelismo y orden.
 - `user.author` — sólo se anuncian las PRs de este handle.
 - `user.announce.channelUrl` — dónde anunciar.
 - `project.repos` — los repos del workspace, con su tag.
-- `project.gateWorkflow` — el workflow que actúa de gate.
+- `project.gateWorkflow` — el workflow (o la lista de workflows) que actúa de
+  gate; un PR se anuncia solo con todos en verde en el SHA de su HEAD.
+- `project.gateRequired` — opcional: los jobs que tienen que haber **pasado**
+  (los tests, el review automático); salteados no cuentan.
 - `project.notifiedLabel` — la label que marca lo ya anunciado.
 - `project.relayGates` — política de relay.
 - `project.orca.wrapperRepoId` — el repo wrapper en Orca.
@@ -755,7 +758,7 @@ verificó en vivo. El orden es este, y no hay otro:
 
 ```bash
 # 1. Verificar el gate EN VIVO contra GitHub. Sin esto el envio esta denegado.
-$WB/tools/conductor-ledger.sh announce-arm <TCK-N> --gate-workflow "<gateWorkflow>"
+$WB/tools/conductor-ledger.sh announce-arm <TCK-N>   # gateWorkflow y gateRequired, del config
 
 # 2. Mandar el mensaje al canal. Habilitado por 10 minutos, no más.
 

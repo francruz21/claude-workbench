@@ -530,35 +530,30 @@ Va en segundo plano, uno por PR; `$N` es el número de PR, `$SLUG` el
 ```bash
 prev=""
 while true; do
-  out=$(gh pr checks "$N" --repo "$SLUG" --json name,bucket 2>/dev/null)
-  if [ -z "$out" ]; then
-    cur=ERROR
-  else
-    cur=$(jq -r 'if length == 0 then "SINCHECKS"
-                 elif any(.[].bucket; . == "fail" or . == "cancel") then "RED"
-                 elif any(.[].bucket; . == "pending") then "PENDING"
-                 else "GREEN" end' <<<"$out")
-  fi
-  [ "$cur" != "$prev" ] && [ "$cur" != "PENDING" ] && echo "$TICKET PR#$N $cur"
+  line=$("$WB/tools/conductor-ledger.sh" pr-state --repo "$SLUG" --number "$N" --ticket "$TICKET")
+  cur=${line%%$'\t'*}
+  [ "$cur" != "$prev" ] && [ "$cur" != "PENDING" ] && echo "$TICKET PR#$N $line"
   prev=$cur; sleep 60
 done
 ```
 
-Tres detalles de los que depende que funcione, y que se equivocan solos:
+`pr-state` es el mismo cálculo que hace `announce-arm` antes de dejar anunciar,
+y con `--ticket` anota el estado en el registro, que es lo que lee el despertador
+del mod. Los workflows del gate (`gateWorkflow`, uno o varios) y los jobs que
+tienen que pasar (`gateRequired`) salen del config del proyecto. Lo que resuelve,
+y que un `gh pr checks` con jq se equivoca solo:
 
-- **El estado sale del JSON, nunca del exit code.** `gh pr checks` sale con 1
-  cuando algún check falla y con 8 cuando hay pendientes. Un `|| echo ERROR`
-  colapsa el rojo y el pendiente en "error de consulta", y el monitor se queda
-  mudo ante la falla que viene a detectar.
-- **`length == 0` se evalúa antes que todo.** Sobre una lista vacía `all(...)`
-  devuelve verdadero, así que un PR **sin checks corridos** se reportaría verde
-  y se anunciaría solo. Es el error que esta skill ya tiene documentado ("falta
-  el guarda `length > 0`").
-- **El verde se decide por descarte.** Preguntar "¿son todos `pass`?" deja fuera
-  a `skipping`, y un PR con los checks salteados se quedaría en `PENDING` para
-  siempre: como `PENDING` no emite, nadie se entera. La pregunta correcta es
-  "¿queda alguno sin terminar?". `cancel` cuenta como rojo: un check cancelado
-  no probó nada.
+- **Mira los runs del SHA del PR, no la vista de `gh pr checks`.** Esa vista
+  muestra solo la última corrida de cada check, y un `gh pr edit` dispara una
+  corrida (`edited`) que **saltea los tests a propósito**: tapaba a la del push.
+  Por cada job manda su última corrida que no fue salteada.
+- **Salteado no es verde.** Un job de `gateRequired` que no pasó en ninguna
+  corrida del SHA da `SINCHECKS`: los tests que nunca corrieron no probaron nada.
+- **Todos los workflows del gate.** Con uno solo, un `claude-review` en rojo no
+  frenaba el anuncio. Un workflow que no corrió en el SHA también es `SINCHECKS`.
+- **Rojo** es un job fallado, o cancelado sin otra corrida que lo pruebe;
+  **pendiente**, cualquier run del gate sin terminar.
+- **El estado sale del JSON, nunca del exit code** de `gh`.
 
 ### Qué se hace con cada estado
 
@@ -587,13 +582,11 @@ borrado, el monitor reporta y sigue. Un monitor que se muere en silencio es
 indistinguible de uno que no tiene nada que decir — que es exactamente el modo de
 falla que todo esto viene a corregir.
 
-**El monitor es el despertador, no el juez.** Mide con `gh pr checks`, que ve
-todos los checks; el filtro de `discord.md` decide el anuncio con
-`statusCheckRollup` acotado a `gateWorkflow`. No miden lo mismo a propósito: el
-monitor existe para que el conductor **se entere** de que algo cambió, y la
-decisión de anunciar sigue siendo del filtro, que está verificado contra datos
-reales. Que el monitor sea más ancho es conservador en la dirección correcta —
-un rojo fuera del gate igual merece la atención del hijo. **No los alinees.**
+**El monitor, el filtro del anuncio y `announce-arm` miden lo mismo**: los tres
+usan `pr-state`. Antes eran tres cálculos distintos y el del anuncio era el más
+flojo (un workflow, salteado = verde), así que se anunciaban PRs que el monitor
+veía en rojo. Un rojo fuera de los workflows del gate (otro bot, Lighthouse) no
+frena el anuncio, pero si es del PR del hijo, igual se le pasa.
 
 ## Reconciliar una tanda que sobrevivió a la sesión
 

@@ -78,6 +78,68 @@ need_ticket() {
     die "el ticket $ticket no esta en el registro; abrilo primero con \"open\"" 1
 }
 
+# Los workflows del gate y los jobs que tienen que pasar, del config del
+# proyecto cuando no vienen por flag. `gateWorkflow` puede ser un string o una
+# lista; `gateRequired` es la lista de jobs que no alcanza con que no fallen.
+project_config() {
+  local cfg
+  cfg="$(resolve_workspace)/.claude/workbench.project.json"
+  [ -f "$cfg" ] || return 0
+  jq -r "$1" < "$cfg" 2>/dev/null || true
+}
+
+# El estado del gate de un PR, sobre los runs del SHA de su HEAD. Imprime una
+# linea "<ESTADO>\t<por que>".
+#
+# No usa `gh pr checks`: muestra solo la ultima corrida de cada check, y un
+# `gh pr edit` dispara una corrida (`edited`) que saltea los tests a proposito.
+# Esa corrida tapaba a la del push, y un job salteado se contaba como verde:
+# se anunciaron PRs con `claude-review` en rojo, porque ademas solo se miraba
+# un workflow.
+#
+# Por cada job de los workflows del gate decide su ultima corrida que no fue
+# salteada: un `edited` no pisa al push que lo corrio. Un job fallado, o solo
+# cancelado, es RED; un run sin terminar, PENDING; un workflow que no corrio
+# en el SHA, o un job de `gateRequired` que no paso, SINCHECKS.
+pr_state() {
+  local repo="$1" num="$2" workflows="$3" required="$4" sha runs ids id jobs one
+  sha="$(gh pr view "$num" --repo "$repo" --json headRefOid --jq .headRefOid 2>/dev/null || true)"
+  [ -n "$sha" ] || { printf 'ERROR\tno pude leer el SHA del PR\n'; return; }
+  runs="$(gh run list --repo "$repo" --commit "$sha" --limit 100 \
+    --json databaseId,workflowName,status,createdAt 2>/dev/null || true)"
+  [ -n "$runs" ] || { printf 'ERROR\tno pude listar los runs de %s\n' "${sha:0:7}"; return; }
+
+  ids="$(jq -r --arg w "$workflows" '($w | split("\n") | map(select(. != ""))) as $ws
+    | .[] | select(.workflowName as $n | $ws | index($n)) | .databaseId' <<<"$runs")"
+  jobs='[]'
+  for id in $ids; do
+    one="$(gh run view "$id" --repo "$repo" --json jobs 2>/dev/null || true)"
+    [ -n "$one" ] || { printf 'ERROR\tno pude leer los jobs del run %s\n' "$id"; return; }
+    jobs="$(jq -c --argjson run "$(jq -c --argjson i "$id" '.[] | select(.databaseId == $i)' <<<"$runs")" \
+      --argjson acc "$jobs" '$acc + [.jobs[] | {workflow: $run.workflowName, at: $run.createdAt,
+        name, status, conclusion: (.conclusion // "")}]' <<<"$one")"
+  done
+
+  jq -rn --argjson runs "$runs" --argjson jobs "$jobs" --arg w "$workflows" --arg r "$required" --arg sha "${sha:0:7}" '
+    def lines: split("\n") | map(select(. != ""));
+    def skip: . == "skipped" or . == "neutral" or . == "cancelled" or . == "";
+    ($w | lines) as $ws | ($r | lines) as $req
+    | [$runs[] | select(.workflowName as $n | $ws | index($n))] as $mine
+    | ($jobs | group_by(.workflow + "/" + .name) | map(sort_by(.at) as $e
+        | {name: $e[0].name,
+           result: ([$e[] | select(.conclusion | skip | not)] | last
+             | if . == null then (if any($e[]; .conclusion == "cancelled") then "cancelled" else "skipped" end)
+               elif .conclusion == "success" then "pass" else "fail" end)})) as $verdict
+    | ([$ws[] | select(. as $x | $mine | map(.workflowName) | index($x) | not)]) as $missing
+    | if ($missing | length) > 0 then "SINCHECKS\t\($missing | join(", ")) no corrio en \($sha)"
+      elif any($mine[]; .status != "completed") then "PENDING\thay runs sin terminar en \($sha)"
+      elif any($verdict[]; .result == "fail" or .result == "cancelled") then
+        "RED\t\([$verdict[] | select(.result == "fail" or .result == "cancelled") | "\(.name)=\(.result)"] | join(", "))"
+      elif any($req[]; . as $q | any($verdict[]; .name == $q and .result == "pass") | not) then
+        "SINCHECKS\tno pasaron en \($sha): \([$req[] | select(. as $q | any($verdict[]; .name == $q and .result == "pass") | not)] | join(", "))"
+      else "GREEN\t\($verdict | length) jobs en \($sha), ninguno en rojo" end'
+}
+
 usage() {
   cat <<'USAGE'
 uso: conductor-ledger.sh <comando> [args]
@@ -88,8 +150,12 @@ uso: conductor-ledger.sh <comando> [args]
   child <ticket> [--worktree-id ID] [--handle H] [--task-id T] [--dispatch-id D]
   pr-add <ticket> --repo OWNER/REPO --number N [--url U]
   pr-gate <ticket> --number N --gate GREEN|RED|PENDING|SINCHECKS
-  announce-arm <ticket> [--gate-workflow W] [--ttl S]
+  announce-arm <ticket> [--gate-workflow W]... [--require JOB]... [--ttl S]
                                          verifica el gate EN VIVO y habilita el envio
+  pr-state --repo OWNER/REPO --number N [--ticket T] [--gate-workflow W]... [--require JOB]...
+                                         el gate de un PR sobre los runs de su SHA:
+                                         "<GREEN|RED|PENDING|SINCHECKS|ERROR>\t<por que>"
+                                         (workflows y jobs: del config si no van por flag)
   announce-armed                         (para el hook) 0 si hay un arm vigente
   announced <ticket> [--message-url U]   marca el anuncio como enviado y consume el arm
   labelled <ticket>                      marca puesta la label de anunciado
@@ -245,14 +311,18 @@ case "$cmd" in
     ticket="${1:-}"; [ -n "$ticket" ] || die 'falta el ticket'
     shift
     need_ticket "$file" "$ticket"
-    gwf=""; ttl=600
+    gwf=""; req=""; ttl=600
     while [ $# -gt 0 ]; do
       case "$1" in
-        --gate-workflow) gwf="$2"; shift 2 ;;
+        --gate-workflow) gwf="${gwf}$2"$'\n'; shift 2 ;;
+        --require)       req="${req}$2"$'\n'; shift 2 ;;
         --ttl)           ttl="$2"; shift 2 ;;
         *) die "opcion desconocida: $1" ;;
       esac
     done
+    [ -n "$gwf" ] || gwf="$(project_config '.gateWorkflow // empty | if type == "array" then .[] else . end')"
+    [ -n "$req" ] || req="$(project_config '.gateRequired // [] | .[]')"
+    [ -n "$gwf" ] || die 'falta el workflow del gate: --gate-workflow o gateWorkflow en el config del proyecto'
     command -v gh >/dev/null 2>&1 || die 'falta gh: sin el no se puede verificar el gate en vivo'
     n_prs="$(jq --arg t "$ticket" '.tickets[$t].prs | length' < "$file")"
     [ "$n_prs" -gt 0 ] || die "$ticket no tiene ningun PR registrado: nada que verificar" 1
@@ -261,22 +331,9 @@ case "$cmd" in
     rojos=""
     while IFS=$'\t' read -r prepo pnum; do
       [ -n "$pnum" ] || continue
-      raw="$(gh pr checks "$pnum" --repo "$prepo" --json name,bucket,workflow 2>/dev/null || true)"
-      if [ -z "$raw" ]; then
-        rojos="${rojos} #${pnum}=SINRESPUESTA"
-        continue
-      fi
-      # length==0 se evalua primero: sobre una lista vacia "ninguno sin
-      # terminar" es verdadero, y un PR sin checks corridos se reportaria
-      # verde. Es el error que esta skill ya tiene documentado.
-      estado="$(printf '%s' "$raw" | jq -r --arg w "$gwf" '
-        (if $w == "" then . else [.[] | select((.workflow // "") == $w)] end)
-        | if length == 0 then "SINCHECKS"
-          elif any(.[].bucket; . == "fail" or . == "cancel") then "RED"
-          elif any(.[].bucket; . == "pending") then "PENDING"
-          else "GREEN" end' 2>/dev/null || printf 'ERROR')"
+      IFS=$'\t' read -r estado why < <(pr_state "$prepo" "$pnum" "$gwf" "$req")
       $0 pr-gate "$ticket" --number "$pnum" --gate "$estado" >/dev/null 2>&1 || true
-      [ "$estado" = GREEN ] || rojos="${rojos} #${pnum}=${estado}"
+      [ "$estado" = GREEN ] || rojos="${rojos} ${prepo}#${pnum}=${estado} (${why})"
     done < <(jq -r --arg t "$ticket" '.tickets[$t].prs[] | "\(.repo)\t\(.number)"' < "$file")
 
     if [ -n "$rojos" ]; then
@@ -289,6 +346,32 @@ case "$cmd" in
       '.armedTicket = $t | .armedUntil = $u
        | .tickets[$t].updatedAt = $at'
     printf '%s habilitado para anunciar: todos los PRs en GREEN. El arm vence en %ss.\n' "$ticket" "$ttl"
+    ;;
+
+  pr-state)
+    # El mismo calculo que announce-arm, para el monitor de cada PR. Con
+    # --ticket ademas lo anota, que es lo que lee el despertador del mod.
+    repo=""; number=""; ticket=""; gwf=""; req=""
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --repo)          repo="$2"; shift 2 ;;
+        --number)        number="$2"; shift 2 ;;
+        --ticket)        ticket="$2"; shift 2 ;;
+        --gate-workflow) gwf="${gwf}$2"$'\n'; shift 2 ;;
+        --require)       req="${req}$2"$'\n'; shift 2 ;;
+        *) die "opcion desconocida: $1" ;;
+      esac
+    done
+    if [ -z "$repo" ] || [ -z "$number" ]; then die 'faltan --repo y --number'; fi
+    command -v gh >/dev/null 2>&1 || die 'falta gh'
+    [ -n "$gwf" ] || gwf="$(project_config '.gateWorkflow // empty | if type == "array" then .[] else . end')"
+    [ -n "$req" ] || req="$(project_config '.gateRequired // [] | .[]')"
+    [ -n "$gwf" ] || die 'falta el workflow del gate: --gate-workflow o gateWorkflow en el config del proyecto'
+    line="$(pr_state "$repo" "$number" "$gwf" "$req")"
+    if [ -n "$ticket" ]; then
+      $0 pr-gate "$ticket" --number "$number" --gate "${line%%$'\t'*}" >/dev/null 2>&1 || true
+    fi
+    printf '%s\n' "$line"
     ;;
 
   announce-armed)

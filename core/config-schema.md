@@ -170,7 +170,8 @@ bajan desde la capa de usuario (ver la seccion siguiente).
 | `qaResultLabels.fail` | string | label que se pone cuando falla al menos un caso, y que se saca al publicar la correccion |
 | `repos` | array de `{slug, tag}` | repos del workspace que este proyecto conduce |
 | `orca.wrapperRepoId` | string | id en Orca del repo wrapper que agrupa `repos` |
-| `gateWorkflow` | string | workflow de CI que actua de gate antes de anunciar |
+| `gateWorkflow` | string \| string[] | workflow(s) de CI que actuan de gate antes de anunciar: todos tienen que estar en verde en el SHA del PR |
+| `gateRequired` | string[] (opcional) | jobs de esos workflows que tienen que haber pasado; uno salteado en todas las corridas del SHA no es verde |
 | `notifiedLabel` | string | label que marca un ticket como ya anunciado |
 | `relayGates` | `"delicate-only"` \| `"judgment-only"` \| `"all"` | que gates viajan hasta el usuario. `"delicate-only"` es el **default**: el conductor resuelve todo gate con una respuesta recomendada que pueda defender en una linea, y escala solo lo delicado (arquitectura, contratos compartidos, permisos, lo irreversible, el alcance desbordado, dos caminos sin ganador claro) — ver la seccion *Que decide el conductor* de la skill. `"judgment-only"` resuelve solo los dos derivables de labels (tipo de rama y rama base) y releva craneo, QA y PR siempre. `"all"` releva los cinco, para quien quiera control total |
 
@@ -238,7 +239,8 @@ no exige tocar nada compartido.
     "fail": "<label-qa-fallo>"
   },
   "repos": [{ "slug": "<slug-de-repo>", "tag": "<tag-de-repo>" }],
-  "gateWorkflow": "<nombre-del-workflow>",
+  "gateWorkflow": ["<workflow-de-tests>", "<workflow-de-review>"],
+  "gateRequired": ["<job-de-tests>", "<job-de-review>"],
   "notifiedLabel": "<label-de-ya-anunciado>",
   "relayGates": "delicate-only"
 }
