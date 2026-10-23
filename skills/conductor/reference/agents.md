@@ -454,8 +454,10 @@ agente), el conductor **triagea**; no reenvía por reflejo.
    - **Hallazgo de review** → `reply` al hijo con el hallazgo, no al usuario.
      Recién si el hijo no lo arregla, sube.
 
-   - **Delicado** → al usuario, **con el nombre del agente adelante**, la
-     recomendación si la hay, y **por qué no se decidió solo**:
+   - **Escalable según `relayGates`** (con `critical-only`, solo lo crítico) →
+     al usuario, una vez, **con el nombre del agente adelante**, y **por qué no
+     se decidió solo**. Con `critical-only` un contrato como el del ejemplo se
+     decide; el ejemplo es de `delicate-only`:
 
      > **TCK-262 · slug-corto** propone agregar una columna a la tabla
      > compartida. Es un contrato que consume el resto del sistema, así que no
@@ -474,6 +476,15 @@ sesiones le griten al usuario a la vez.
 
 El valor que agrega acá es doble: **absorber** lo que ya venía decidido por el
 código y el config, y **serializar** lo que queda.
+
+### Con `relayGates: "critical-only"`
+
+El conductor decide los cinco gates siempre que tenga una recomendación, incluido
+lo delicado (contratos, permisos, auth, arquitectura, alcance), con una condición
+de freno para el hijo y la decisión escrita en la PR. Sube solo lo crítico:
+escribir fuera de local, push/merge, crear o editar tickets (salvo la parte N de
+un recorte), tocar otro repo, o algo que necesita a otra persona. La lista
+completa está en la skill.
 
 ### Con `relayGates: "delicate-only"` (el default)
 
@@ -503,9 +514,10 @@ agente, sin intentar resolverlo por él.
 
 ## Lo que el conductor no hace acá
 
-- No decide lo delicado: arquitectura, contratos compartidos, permisos, infra,
-  lo irreversible, el alcance desbordado, o dos caminos sin ganador claro. Eso
-  sube en los tres modos de `relayGates`.
+- Con `delicate-only`, `judgment-only` o `all` no decide lo delicado:
+  arquitectura, contratos compartidos, permisos, infra, lo irreversible, el
+  alcance desbordado, o dos caminos sin ganador claro. Con `critical-only` lo
+  decide, y sube solo lo crítico.
 - No resuelve un gate sin haber leído el diff, ni arregla en el worktree del hijo
   lo que encontró revisándolo.
 - No pushea, no mergea, no aprueba PRs. Tampoco los hijos: dejan la rama lista

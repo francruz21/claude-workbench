@@ -38,6 +38,14 @@ const modelSentTo = atom({ plugin: 'conductor', key: 'modelSentTo' } as const, {
 const isModelPending = atom({ plugin: 'conductor', key: 'isModelPending' } as const, false)
 const heartbeats = atom({ plugin: 'conductor', key: 'heartbeats' } as const, {})
 const isInjected = atom({ plugin: 'conductor', key: 'isInjected' } as const, false)
+const isComposed = atom({ plugin: 'conductor', key: 'isComposed' } as const, false)
+
+// The batch, the cycle and the model routing, re-read on every request.
+async function anchor($: EngineInterface): Promise<string> {
+  const now = await $.clock.now()
+
+  return `${anchorText(summarize(await read($, rows), now), now, await read($, handle), await read($, isInjected))}\n\n${anchorSection(await read($, routing))}`
+}
 
 // The ledger's text, or null when the file is missing or unreadable.
 async function readText($: EngineInterface, path: string): Promise<string | null> {
@@ -225,30 +233,35 @@ export const register: Register = on => {
   on('prompt.submit', async ($, e, next) => {
     const filtered = e.command === undefined ? withoutHeartbeats(e.text) : null
     // The person spoke: the idle nudges start counting again.
+    // An organization's security plugin can skip a user plugin's prompt.compose.
+    // Until compose is seen running, the anchor rides on each prompt as context.
+    const withAnchor = async (input: typeof e) =>
+      input.command === undefined && (await read($, isArmed)) && !(await read($, isComposed))
+        ? { ...input, context: [...(input.context ?? []), await anchor($)] }
+        : input
     if (filtered === null) {
       if (e.origin.kind === 'composer') await update($, idleNudges, () => 0)
 
-      return next(e)
+      return next(await withAnchor(e))
     }
 
     // Orca's injected mail: seeing it once tells the session the injection rules,
     // and its heartbeats go to the pane instead of costing the conductor a turn.
     await update($, isInjected, () => true)
-    if (!(await read($, isArmed)) || filtered.heartbeats.length === 0) return next(e)
+    if (!(await read($, isArmed)) || filtered.heartbeats.length === 0) return next(await withAnchor(e))
 
     const now = await $.clock.now()
     await update($, heartbeats, map => ({ ...map, ...Object.fromEntries(filtered.heartbeats.map(h => [h, now])) }))
     if (filtered.text === null) return { drop: `conductor: ${filtered.heartbeats.length} heartbeat(s) al pane, sin turno.` }
 
-    return next({ ...e, text: filtered.text })
+    return next(await withAnchor({ ...e, text: filtered.text }))
   }).catch(($, e, next) => next(e))
 
   on('prompt.compose', async ($, e, next) => {
     const composed = await next(e)
     if (!(await read($, isArmed))) return composed
-    const now = await $.clock.now()
-    const text = `${anchorText(summarize(await read($, rows), now), now, await read($, handle), await read($, isInjected))}\n\n${anchorSection(await read($, routing))}`
-    const section = { id: 'conductor:anchor', text, scope: 'session' } as const
+    await update($, isComposed, () => true)
+    const section = { id: 'conductor:anchor', text: await anchor($), scope: 'session' } as const
 
     return { ...composed, sections: [...composed.sections, section] }
   })

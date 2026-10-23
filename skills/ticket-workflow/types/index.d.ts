@@ -31,6 +31,9 @@ declare module 'claude-code' {
       repos: GitState[]
       // Message ids already woken for, or already read back after an `ask`.
       woken: string[]
+      // prompt.compose ran for this child: the anchor reaches the system prompt
+      // there, and stops riding on each prompt.
+      isComposed: boolean
     }
   }
 }
