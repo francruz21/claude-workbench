@@ -52,6 +52,16 @@ probe podria pisar la respuesta que la persona ya dio.
 | `announce` | string | `"canal"` \| `"skip"` |
 | `publish` | string | `"human"` (la rama la publica una persona) \| `"agent"` (la publica quien trabaja el ticket, solo con `tools/publish-branch.sh`) |
 | `askEveryTime` | string[] | claves de `choices` a re-preguntar siempre en vez de usar el valor guardado |
+| `modelRouting` | object (opcional) | el ruteo de modelos del conductor; ausente equivale a `enabled: false` |
+| `modelRouting.enabled` | boolean | `true`: cada hijo recibe `/model` antes del dispatch; `false`: todos heredan el default |
+| `modelRouting.conductor` | string | modelo del conductor (alias de `/model` como `opus`, o un id completo); obligatorio con `enabled` |
+| `modelRouting.child` | string | modelo del hijo que implementa un ticket acotado; obligatorio con `enabled` |
+| `modelRouting.childHeavy` | string (opcional) | modelo del hijo de un ticket pesado; ausente usa `child` |
+| `modelRouting.forbidden` | string[] (opcional) | modelos que ningun rol puede usar, prendido o apagado (`"fable"` cubre cualquier id que lo nombre); un rol con uno prohibido cuenta como ausente |
+
+`modelRouting` es una eleccion y no un hecho: que un modelo este disponible no
+dice cual quiere la persona para cada rol. Se cambia con `/model-routing
+on|off|status|set` (el mod del conductor) o a mano.
 
 `publish` es una eleccion y no un hecho aunque dependa de que el remoto se
 pueda escribir: que el agente tenga credenciales no dice que la persona quiera
@@ -76,7 +86,13 @@ eleccion de la persona, no algo que el sistema revele por si solo.
     "worktrees": "git-worktree",
     "announce": "skip",
     "publish": "human",
-    "askEveryTime": []
+    "askEveryTime": [],
+    "modelRouting": {
+      "enabled": true,
+      "conductor": "<modelo-fuerte>",
+      "child": "<modelo-rapido>",
+      "childHeavy": "<modelo-fuerte>"
+    }
   }
 }
 ```

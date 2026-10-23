@@ -1,6 +1,6 @@
 {
   "name": "conductor",
   "version": "0.1.0",
-  "description": "Pane, status line, toasts and /tanda over the conductor ledger, read-only",
+  "description": "Pane, status line, toasts, /tanda and /model-routing over the conductor ledger",
   "types": "./types/index.d.ts"
 }

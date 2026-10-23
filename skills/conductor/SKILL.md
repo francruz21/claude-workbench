@@ -30,6 +30,9 @@ agrega es paralelismo y orden.
   pregunta una vez y se recuerda la respuesta en `choices.worktrees`.
 
 **Config**
+- `capabilities.choices.modelRouting` — opcional: qué modelo usa cada agente
+  de la tanda. Ausente o con `enabled: false` es el comportamiento de siempre
+  (todos heredan el default). Ver el paso 3.
 - `user.author` — sólo se anuncian las PRs de este handle.
 - `user.announce.channelUrl` — dónde anunciar.
 - `project.repos` — los repos del workspace, con su tag.
@@ -246,9 +249,20 @@ En una sesión armada:
   prompt que arranca un turno en cuanto la sesión queda libre. Cada mensaje
   despierta una sola vez. Con hijos activos y 30 minutos sin turnos, un
   empujón para revisarlos; tres seguidos como máximo, hasta que pase algo.
+- **Correo inyectado.** Al ver el primer bloque `--- Orchestration Messages ---`
+  de Orca, la sesión queda marcada: el ancla deja de pedir `check` y cualquier
+  `check --wait` se niega (volvería vacío). Los `heartbeat` del bloque no te
+  cuestan un turno: se sacan, y el pane muestra `♥ hace N min` por hijo. Un
+  bloque con solo heartbeats no entra.
 - **Guardas.** Se niegan `orchestration check --wait` sin `--types`, un
-  `worktree create` para un ticket que ya está abierto en el registro, y un
-  `AskUserQuestion` cuyos headers no empiezan con "Delicado".
+  `worktree create` para un ticket que ya está abierto en el registro, un
+  `AskUserQuestion` cuyos headers no empiezan con "Delicado", y, con el ruteo
+  de modelos prendido, un `dispatch --inject` a un hijo al que esta sesión no
+  le mandó su `/model`.
+- **Ruteo de modelos.** `/model-routing on|off|status` y `/model-routing set
+  <conductor|child|childHeavy> <modelo>` escriben `choices.modelRouting` en
+  `capabilities.json`. El ancla dice qué modelo mandarle a cada hijo, y al
+  armarse la sesión pasa sola al modelo del conductor.
 - **Vista.** El pane **Tanda**, el resumen en la status line, un toast por cada
   gate GREEN/RED, turno de QA, anuncio y cierre, y `/tanda` (`/tanda viejos`).
 
@@ -648,11 +662,35 @@ front y back quedan invisibles. Ver
 
 Al crear cada uno, decir qué se creó y con qué nombre.
 
+**El modelo de cada hijo, si el ruteo está prendido.** Con
+`choices.modelRouting.enabled: true`, el hijo no hereda el modelo por defecto:
+con el `tui-idle` y **antes** del `dispatch --inject`, se le manda
+`/model <modelo>` con `terminal send`. `worktree create --agent claude` no
+tiene flag de modelo, y un `settings.local.json` en el worktree llega tarde: el
+agente ya arrancó dentro del mismo `create`. Qué modelo lo decide el conductor
+por ticket, sin preguntar:
+
+- `child` — el default: implementar un ticket acotado.
+- `childHeavy` — decisiones de diseño, seguridad, migraciones, o mucho
+  alcance. Si no está definido, se usa `child`.
+
+El conductor mismo corre en `choices.modelRouting.conductor`: revisa diffs y
+decide gates, así que es el rol que pide el modelo más fuerte. Con el mod
+cargado, armarse lo cambia solo. Un rol obligatorio que falta (`conductor`,
+`child`) se pregunta según `core/resolve.md`; nunca se completa en silencio.
+El usuario lo prende, lo apaga o lo ve con `/model-routing on|off|status`, y
+fija un rol con `/model-routing set <rol> <modelo>`. Apagado no se manda
+ningún `/model`. Ver
+[`reference/agents.md`](reference/agents.md#el-modelo-del-hijo).
+
 ### 4. Supervisión — resolver o escalar
 
-Ventanas rodantes de `check --wait --types worker_done,escalation,decision_gate`
-con `--timeout-ms 900000`. Ver
-[`reference/agents.md`](reference/agents.md#supervisar-sin-matar-agentes).
+**Si Orca te inyecta los mensajes, la inyección manda**: cada bloque
+`--- Orchestration Messages ---` entra como turno, ya leído, y un `check --wait`
+en paralelo vuelve vacío. Se atiende lo que entra y se relee con `inbox`. Solo
+sin inyección: ventanas rodantes de `check --wait --types
+worker_done,escalation,decision_gate` con `--timeout-ms 900000`. Ver
+[`reference/agents.md`](reference/agents.md#la-inyección-manda-sobre-check---wait).
 
 Cuando llega un gate: leer el diff del hijo, pasarle `code-review`, y aplicar el
 test de *Qué decide el conductor, y qué te pregunta*.

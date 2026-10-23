@@ -128,3 +128,22 @@ test('idle nudges stop after three in a row and restart when the person speaks',
   await clock.settle()
   expect(prompts.filter(text => text.includes('Pasó un rato')).length).toBe(4)
 })
+
+test('in the armed session Orca heartbeats go to the pane and the rest goes through', async ($: any, on: On) => {
+  const { prompts } = host(on)
+  await start($)
+  await $.skill.prompt({ skill: 'conductor', text: 'skill body' })
+
+  const beat = '──── From: TERM_A (term_a) (heartbeat) ────\nSubject: alive\n────────'
+  const gate = '──── From: TERM_A (term_a) (decision_gate) ────\nSubject: Gate 2\n────────'
+  const dropped = await $.prompt.submit({ text: `--- Orchestration Messages (1) ---\n${beat}\n---`, origin: { kind: 'composer' } } as never)
+  expect(dropped.drop).toContain('heartbeat')
+
+  await $.prompt.submit({ text: `--- Orchestration Messages (2) ---\n${beat}\n${gate}\n---`, origin: { kind: 'composer' } } as never)
+  expect(prompts.at(-1)).toContain('Subject: Gate 2')
+  expect(prompts.at(-1)).not.toContain('alive')
+
+  // Having seen the injection, a check --wait is refused: it would come back empty.
+  const denied = await $.tool.call({ tool: 'Bash', tool_use_id: 't1', command: 'orca orchestration check --wait --types worker_done' } as never)
+  expect(denied.deny).toContain('inbox')
+})

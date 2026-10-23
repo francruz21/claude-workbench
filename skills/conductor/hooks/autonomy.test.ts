@@ -90,6 +90,11 @@ describe('bashGuard', () => {
     expect(bashGuard('orca-ide orchestration check --terminal t --wait', rows)).toContain('--types')
   })
 
+  test('with injected mail, any check --wait is refused: it would come back empty', () => {
+    expect(bashGuard('orca-ide orchestration check --terminal t --wait --types worker_done', rows, true)).toContain('inbox')
+    expect(bashGuard('orca-ide orchestration inbox --json', rows, true)).toBe(null)
+  })
+
   test('lets check --wait with --types run', () => {
     expect(bashGuard('orca-ide orchestration check --terminal t --wait --types worker_done', rows)).toBe(null)
   })
@@ -126,5 +131,19 @@ describe('askGuard', () => {
 
   test('one untagged question in the set is enough to refuse', () => {
     expect(askGuard(['Delicado', 'Scope'])).not.toBe(null)
+  })
+})
+
+describe('anchorText and the injection', () => {
+  const summary = summarize(rows, NOW)
+
+  test('without injection the cycle starts with check', () => {
+    expect(anchorText(summary, NOW, 'term_c')).toContain('check --terminal term_c --types')
+  })
+
+  test('with injection it says not to arm check --wait', () => {
+    const text = anchorText(summary, NOW, 'term_c', true)
+    expect(text).toContain('No armes `check --wait`')
+    expect(text).not.toContain('check --terminal term_c')
   })
 })
