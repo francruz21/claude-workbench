@@ -274,7 +274,7 @@ le habla al usuario. La asimetría es a propósito.
 
 ### El `--spec` del task
 
-Tiene que decirle al agente nueve cosas, explícitas:
+Tiene que decirle al agente diez cosas, explícitas:
 
 1. **El ticket** — ID, link, y lo que se leyó de él (título, labels de ambiente
    y de tipo, casos de prueba si los describe).
@@ -322,6 +322,16 @@ Tiene que decirle al agente nueve cosas, explícitas:
    La última frase carga el peso: el hijo tiene prohibido mirar a sus hermanos,
    así que **no tiene forma de saber que la máquina está cargada**. Si no se le
    dice, el cálculo que hace siempre es "estoy solo, puedo paralelizar".
+10. **Que no deja de trabajar hasta entregar.** Va textual:
+
+    > No dejás de trabajar hasta entregar: PR publicada y `worker_done`. Lo menor
+    > lo decidís vos y lo dejás escrito en la PR. Un permiso, tu turno de QA o un
+    > dato que solo yo tengo me lo pedís con `ask`, y mientras seguís con lo que
+    > no dependa de eso. Esperar solo vale para tu turno de QA o un stack que
+    > está levantando, con su monitor armado.
+
+    Sin esta línea el hijo termina un turno en cuanto duda, y se queda quieto
+    hasta que alguien se da cuenta.
 
 ## El rastro en el tracker
 
@@ -362,6 +372,28 @@ No se contradicen ni se repiten: son dos temas.
 
 ## Supervisar sin matar agentes
 
+### La salud de cada hijo se mide, no se supone
+
+"Está trabajando" es una medición, no un recuerdo. Antes de decírselo al usuario,
+el estado sale de Orca (`terminal list`: `connected`, `orphaned`,
+`lastOutputAt` y el título; `terminal read` para la pantalla). Claude Code titula
+`✳` a una sesión quieta y con un spinner a una que trabaja:
+
+| Estado | Cómo se ve | Qué hace el conductor |
+|---|---|---|
+| trabajando | spinner en el título | nada |
+| esperando | quieto con un stack o monitor corriendo ("1 shell, 1 monitor"), su turno de QA en cola, o ya entregó (PR abierta) | nada: es una espera válida |
+| te espera | un `orchestration ask` corriendo hace más de 5 min | contestarle **ya**: el que lo frena sos vos |
+| parado | quieto, sin nada corriendo, sin `ask` y sin turno en cola | escribirle que siga (`terminal send`); si no arranca, leer su terminal y destrabarlo |
+| trabado | un prompt de permiso en pantalla | leerlo y destrabarlo: si es algo que podés autorizar, autorizalo |
+| muerto | terminal ausente, huérfana o desconectada | retomarlo ya (*Reconciliar una tanda*), con un hijo nuevo y el spec de retoma |
+
+**Con el mod cargado esto corre solo, cada minuto**: el ancla trae el estado
+medido de cada hijo, a un hijo parado el mod le escribe que siga (tres veces,
+cada 5 minutos), y lo que necesita al conductor —muerto, trabado, un `ask` sin
+contestar, o un parado que no arrancó con dos empujones— lo despierta con el
+dato. Un hijo no se queda quieto porque el conductor no miró.
+
 ### La inyección manda sobre `check --wait`
 
 Orca puede entregarle el correo al conductor de dos formas, y **no se mezclan**:
@@ -398,7 +430,9 @@ Ventanas rodantes de 15 minutos. Reglas:
 - Si hay N agentes que pueden terminar juntos, loopear N veces: `check --wait`
   devuelve **un** mensaje por vez.
 - Un agente se considera muerto solo si su terminal desapareció de
-  `orca-ide terminal list --json`, o si el usuario lo pide.
+  `orca-ide terminal list --json` (o quedó huérfana o desconectada), o si el
+  usuario lo pide. Silencio no es muerte; pero **quieto sin nada corriendo es
+  parado**, y a un parado se lo hace seguir (ver la tabla de arriba).
 - **Un hijo que reportó "listo para publicar" y quedó esperando al humano está
   en un estado esperado, no estancado ni muerto.** No hay un push propio que
   vaya a destrabarlo solo, así que ese silencio puede durar horas o días sin

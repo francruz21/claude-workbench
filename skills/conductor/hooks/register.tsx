@@ -14,6 +14,8 @@ import {
   wakeText,
 } from './autonomy'
 import { ago, brief, changes, ledgerPath, parseLedger, prLabel, staleReport, statusLine, summarize } from './ledger'
+import { healthLabel, healthOf, healthWake, nudgeText, parseTail, parseTerminals, ASK_MS, STALL_MS } from './health'
+import type { Health } from './health'
 import { withoutHeartbeats } from './inject'
 import { anchorSection, dispatchGuard, isForbidden, modelsSent, parseCommand, parseRouting, runsOn, statusText, withRouting } from './routing'
 
@@ -39,12 +41,98 @@ const isModelPending = atom({ plugin: 'conductor', key: 'isModelPending' } as co
 const heartbeats = atom({ plugin: 'conductor', key: 'heartbeats' } as const, {})
 const isInjected = atom({ plugin: 'conductor', key: 'isInjected' } as const, false)
 const isComposed = atom({ plugin: 'conductor', key: 'isComposed' } as const, false)
+const health = atom({ plugin: 'conductor', key: 'health' } as const, {})
+const childNudges = atom({ plugin: 'conductor', key: 'childNudges' } as const, {})
+
+// A stalled child is nudged at most this often, and this many times per stall.
+const NUDGE_EVERY_MS = 5 * 60_000
+const MAX_CHILD_NUDGES = 3
+
+// What the anchor says about each child: measured, never assumed.
+async function healthSection($: EngineInterface): Promise<string> {
+  const map = await read($, health)
+  const lines = (await read($, rows)).flatMap(row => (map[row.id] ? [`- ${row.name}: ${map[row.id]}`] : []))
+  if (lines.length === 0) return ''
+
+  return ['Estado real de los hijos (medido en Orca cada minuto; no digas "está trabajando" sin esto):', ...lines].join('\n')
+}
 
 // The batch, the cycle and the model routing, re-read on every request.
 async function anchor($: EngineInterface): Promise<string> {
   const now = await $.clock.now()
 
-  return `${anchorText(summarize(await read($, rows), now), now, await read($, handle), await read($, isInjected))}\n\n${anchorSection(await read($, routing))}`
+  const children = await healthSection($)
+
+  return `${anchorText(summarize(await read($, rows), now), now, await read($, handle), await read($, isInjected))}\n\n${anchorSection(await read($, routing))}${children ? `\n\n${children}` : ''}`
+}
+
+// Measures every active child in Orca, nudges the stalled ones itself, and
+// returns the lines the conductor has to act on (dead, blocked, owed an answer).
+async function checkChildren($: EngineInterface, open: Row[], now: number): Promise<string[]> {
+  const children = open.filter(row => row.handle !== null && !row.isCleaned)
+  if (children.length === 0) return []
+  let listed: ReturnType<typeof parseTerminals> = null
+  try {
+    const { exitCode, stdout } = await $.process.run(['orca-ide', 'terminal', 'list', '--json'])
+    if (exitCode === 0) listed = parseTerminals(stdout)
+  } catch {
+    return []
+  }
+  if (listed === null) return []
+  const byHandle = new Map(listed.map(t => [t.handle, t]))
+
+  const verdicts: Record<string, string> = {}
+  const lines: string[] = []
+  const seen = new Set(await read($, woken))
+  const fresh: string[] = []
+  for (const row of children) {
+    const handleOf = row.handle as string
+    const terminal = byHandle.get(handleOf)
+    let tail = ''
+    const quiet = terminal?.lastOutputAt == null ? 0 : now - terminal.lastOutputAt
+    if (terminal && (/^\s*✳/.test(terminal.title) || quiet >= Math.min(STALL_MS, ASK_MS))) {
+      try {
+        const { exitCode, stdout } = await $.process.run(['orca-ide', 'terminal', 'read', '--terminal', handleOf, '--limit', '30', '--json'])
+        if (exitCode === 0) tail = parseTail(stdout)
+      } catch {
+        // unreadable: judge by the title alone
+      }
+    }
+    const verdict: Health = healthOf(row, terminal, tail, now)
+    verdicts[row.id] = healthLabel(verdict)
+
+    const nudges = (await read($, childNudges))[handleOf] ?? { count: 0, at: 0 }
+    if (verdict.kind === 'stalled') {
+      if (nudges.count < MAX_CHILD_NUDGES && now - nudges.at >= NUDGE_EVERY_MS) {
+        try {
+          await $.process.run(['orca-ide', 'terminal', 'send', '--terminal', handleOf, '--text', nudgeText(row), '--enter', '--json'])
+          await update($, childNudges, map => ({ ...map, [handleOf]: { count: nudges.count + 1, at: now } }))
+          $.ui.toast(`${row.name}: estaba parado, le dije que siga (${nudges.count + 1}/${MAX_CHILD_NUDGES}).`, { timeoutMs: 8000 })
+        } catch {
+          // the send failed: the conductor hears about it below once the nudges run out
+        }
+      }
+    } else if (nudges.count > 0) {
+      await update($, childNudges, map => {
+        const { [handleOf]: _dropped, ...rest } = map
+
+        return rest
+      })
+    }
+
+    const line = healthWake(row, verdict, nudges.count)
+    // Each condition wakes the conductor once; an unanswered ask, again every 15 minutes.
+    const bucket = verdict.kind === 'asking' ? Math.floor(verdict.sinceMin / 15) : verdict.kind === 'stalled' ? nudges.count : 0
+    const key = `health:${row.id}:${verdict.kind}:${bucket}`
+    if (line !== null && !seen.has(key)) {
+      lines.push(line)
+      fresh.push(key)
+    }
+  }
+  await update($, health, () => verdicts)
+  if (fresh.length > 0) await update($, woken, list => [...list, ...fresh].slice(-500))
+
+  return lines
 }
 
 // The ledger's text, or null when the file is missing or unreadable.
@@ -155,11 +243,16 @@ async function wake($: EngineInterface): Promise<void> {
     // no Orca on this host: the ledger half still runs
   }
 
+  const now = await $.clock.now()
+  const childLines = await checkChildren($, open, now)
   const seen = new Set(await read($, woken))
   const pending = pendingFromChildren(messages, open).filter(p => !seen.has(p.id))
   const announce = readyToAnnounce(open).filter(id => !seen.has(`announce:${id}`))
-  const text = wakeText(pending, announce)
-  const now = await $.clock.now()
+  const base = wakeText(pending, announce)
+  const text =
+    childLines.length === 0
+      ? base
+      : [base ?? '[conductor] Un hijo no está trabajando; destrabalo sin esperar al usuario.', '', 'Estado real de los hijos (medido en Orca):', ...childLines].join('\n')
 
   if (text !== null) {
     const ids = [...pending.map(p => p.id), ...announce.map(id => `announce:${id}`)]
@@ -213,6 +306,21 @@ export const register: Register = on => {
 
     return started
   })
+
+  // An organization's security plugin can skip skill.prompt: the Skill tool call
+  // and the slash command arm the session too.
+  on('tool.call', { tool: 'Skill' }, async ($, e, next) => {
+    const result = await next(e)
+    if (/(^|:)conductor$/.test(e.skill) && result.deny === undefined) await arm($, true)
+
+    return result
+  }).catch(($, e, next) => next(e))
+
+  on('command.run', { command: 'conductor' }, async ($, e, next) => {
+    await arm($, true)
+
+    return next(e)
+  }).catch(($, e, next) => next(e))
 
   // Loading the conductor skill is what makes this session the conductor.
   on('skill.prompt', { skill: 'conductor' }, async ($, e, next) => {
