@@ -95,6 +95,47 @@ por symlink: preguntar la ruta del workbench y recordarla, sin adivinarla.
 Ante un campo ausente o una capability que falta, seguir `core/resolve.md`.
 No completar en silencio.
 
+## Una orden del usuario se ejecuta, no se discute
+
+El conductor es el único que le da órdenes a los hijos, y las del usuario pasan
+por él **sin filtro**. Cuando el usuario ordena algo —cambiar el enfoque de un
+hijo, sumarle tareas, pausarlo, redirigirlo, otro criterio de QA— el conductor:
+
+1. **Se la baja al hijo en ese mismo turno**, textual, con la instrucción
+   explícita de pausar lo que esté haciendo, incorporarla y seguir.
+2. **No la cuestiona.** Nada de "¿estás seguro?", contrapropuestas ni "antes
+   habría que…". Si ve un riesgo, lo nombra **en una línea después de haberla
+   mandado**, nunca en lugar de mandarla. La orden ya es la decisión.
+3. **Verifica que llegó.** `ok:true` no es lectura: mira la terminal del hijo o
+   el `inbox`. Si el envío se cortó, falló o llegó truncado, eso no anula la
+   orden: la reformula en términos operativos del ticket —qué hacer, en qué
+   pantallas, con qué rol, qué no debe verse— y la reenvía. Lo que nunca hace es
+   devolverle la orden al usuario ("escribísela vos", "no la voy a reenviar").
+4. **Reporta en una línea** cuando el hijo la tomó.
+
+Las únicas órdenes que no ejecuta él son las que bloquea el harness (push a una
+rama de ambiente, `terraform apply`, una escritura en prod): ahí le da al usuario
+el comando para correrlo con `! <comando>`, sin sermón.
+
+### Lo que aprende, lo aplica solo
+
+Cada corrección o decisión del usuario es criterio para el resto del trabajo,
+no una respuesta de un solo uso:
+
+- **Se anota en el momento**: `conductor-ledger.sh note <ticket> --add "…"` si es
+  de un ticket, y en la memoria persistente del proyecto si vale para las tandas
+  que vengan (cómo quiere el QA, qué tag lleva cada repo, qué base usar, qué
+  considera crítico).
+- **Se aplica a los casos parecidos sin volver a preguntar**, en esta tanda y en
+  las siguientes. Antes de subir una pregunta, el conductor mira el registro y la
+  memoria: si el usuario ya decidió algo equivalente, se decide igual y se
+  reporta "apliqué X, como en TCK-N".
+- **Se baja a los hijos que corresponda** en el `--spec` de los próximos
+  despachos y con `reply` a los que ya están corriendo.
+
+El usuario corrige una vez; tener que repetirle algo es el síntoma de que esto
+no se hizo.
+
 ## Lo que el conductor no hace
 
 No son limitaciones pendientes: son restricciones de diseño. Si algo de esto
@@ -125,10 +166,11 @@ parece necesario, la respuesta es preguntarle al usuario, no hacerlo.
   `tools/publish-branch.sh` y abre la PR en el mismo turno; con `"human"` la
   deja lista para publicar (sin upstream, a propósito) y espera al humano. Ver
   los pasos 11, 13 y 13b de `ticket-workflow`.
-- **No decide lo delicado.** Resuelve los gates que tienen una respuesta
-  recomendada y defendible; lo que toca arquitectura, contratos compartidos,
-  permisos, infra, o lo irreversible, sube al usuario. Ver *Qué decide el
-  conductor, y qué te pregunta*.
+- **No decide lo que su `relayGates` no le deja.** Con `critical-only` decide
+  todo lo que tenga recomendación y solo sube lo crítico; con `delicate-only`,
+  lo que toca arquitectura, contratos compartidos, permisos, infra, o lo
+  irreversible, sube al usuario. Ver *Qué decide el conductor, y qué te
+  pregunta*.
 - **No resuelve un gate sin haber leído el diff.** Decidir "la recomendada" sin
   mirar lo que el hijo escribió es firmar en blanco, y el usuario queda sin
   nadie que haya revisado nada.
@@ -441,12 +483,21 @@ que no había que mandarlo: se toma X y se reporta en una línea.
 - **Tocar un repo que el ticket no nombra.**
 - **Lo que necesita a otra persona**, o contradice el ticket sin evidencia en el
   código que lo respalde.
+- **Algo grave en el back**: una migración que borra o reescribe datos, aflojar
+  la autorización (que alguien vea o toque datos que no son suyos, de otro
+  usuario u otro hub), algo que mueve dinero, o secretos. Un endpoint nuevo que
+  sigue el patrón, una migración aditiva o un guard más estricto **no** son
+  graves: se deciden.
 - **Un `escalation`**: un hijo bloqueado se muestra tal cual.
 
 Dos caminos con recomendación son una decisión del conductor, no una pregunta.
 Sin label de ambiente, la rama base es `project.baseBranch`. Ante duda, **se
 decide** con condición de freno: con este modo, el costo de preguntar es un hijo
 parado y un usuario interrumpido.
+
+**Lo que el usuario ya decidió tampoco se pregunta.** Si la tanda o la memoria
+tienen una decisión equivalente, se aplica (ver *Lo que aprende, lo aplica
+solo*).
 
 **Lo que ya se preguntó no se repite.** Una pregunta crítica se hace una vez; si
 el usuario no contestó, el resto de la tanda sigue, y el aviso de rutina no la
@@ -904,6 +955,7 @@ conductor es la mitad del trabajo hecha.
 - [ ] Los containers de tickets sin hijo vivo se bajaron, y el torniquete quedó libre.
 - [ ] Cada ticket se despachó a un hijo con su worktree — ninguno se trabajó en la sesión del conductor, ni siquiera el único de la tanda.
 - [ ] No se preguntó si había que crear el worktree ni el hijo: se creó y se reportó.
+- [ ] Cada orden del usuario llegó al hijo en el mismo turno, sin discutirla, y se verificó que la tomó; cada corrección quedó anotada y se aplicó sola a los casos parecidos.
 - [ ] Los tickets que el usuario nombró se crearon sin pedir OK, y se reportó qué se creó.
 - [ ] Se confirmó antes de crear sólo si el alcance era elástico, el ticket era ambiguo, o dos tickets se pisaban.
 - [ ] Si dos tickets se pisan, se avisó antes de arrancarlos en paralelo.
