@@ -34,7 +34,8 @@ agrega es paralelismo y orden.
   de la tanda. Ausente o con `enabled: false` es el comportamiento de siempre
   (todos heredan el default). Ver el paso 3.
 - `user.author` — sólo se anuncian las PRs de este handle.
-- `user.announce.channelUrl` — dónde anunciar.
+- `user.announce.channelUrl` — dónde anunciar (y `choices.announceTransport`, por
+  dónde: ver la skill `announce-prs`).
 - `project.repos` — los repos del workspace, con su tag.
 - `project.gateWorkflow` — el workflow (o la lista de workflows) que actúa de
   gate; un PR se anuncia solo con todos en verde en el SHA de su HEAD.
@@ -750,7 +751,10 @@ Una `escalation` no es un gate: es un hijo bloqueado. Se muestra tal cual.
 
 Un timeout es un checkpoint, no una falla.
 
-### 5. PRs y Discord — cola por ticket, automático
+### 5. PRs y anuncio — cola por ticket, automático
+
+El cómo (gate en vivo, mensaje, transporte, label) es la skill **`announce-prs`**;
+el conductor la sigue sin mostrar el mensaje ni esperar OK. Acá, el cuándo.
 
 **Es una cola, no una tanda.** La unidad es el ticket: en cuanto **todos** los PRs
 de un ticket pasan el gate, sale su mensaje — solo, sin esperar a que otros
@@ -811,9 +815,9 @@ gh pr edit <n> --repo OWNER/REPO --add-label <notifiedLabel>
 $WB/tools/conductor-ledger.sh labelled <TCK-N>
 ```
 
-`announce-arm` corre `gh pr checks` sobre cada PR registrado, con el guarda de
-`length == 0` puesto —un PR sin checks es `SINCHECKS`, no verde—, actualiza los
-gates y sólo con **todos** en `GREEN` habilita el envío. Si devuelve `PENDING` o
+`announce-arm` corre `pr-state` sobre cada PR registrado —los runs del SHA, todos
+los workflows del gate, los jobs de `gateRequired` pasados y no salteados—,
+actualiza los gates y sólo con **todos** en `GREEN` habilita el envío. Si devuelve `PENDING` o
 `SINCHECKS`, eso es la respuesta: se le dice al usuario el estado y se espera.
 
 El arm es **de un ticket y por 10 minutos**, y `announced` lo consume. No se
@@ -832,7 +836,7 @@ OK. Lo que lo hace seguro es que el alcance dejó de ser una decisión — el me
 cubre ese ticket y nada más. Lo obligatorio antes de enviar: que la mención
 resuelva, que estén los PRs que corresponden, y que ninguno tenga ya la label.
 Después del envío exitoso, la label. Ver
-[`reference/discord.md`](reference/discord.md).
+[`reference/discord.md`](reference/discord.md) y la skill `announce-prs`.
 
 Si el front está verde y el back todavía corre, **no se manda nada**: se espera
 al ticket completo.
