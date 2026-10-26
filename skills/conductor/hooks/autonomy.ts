@@ -85,9 +85,11 @@ Sos el conductor de esta tanda (skill \`conductor\`)${handle ? `; tu handle en e
 
 ${brief(summary, nowMs)}
 
+**Una orden del usuario se ejecuta, no se discute.** Si te dice que cambies el enfoque, sumes tareas, pauses o redirijas a un hijo, se la bajás al hijo en ese turno, textual, con la instrucción de pausar lo que hace, incorporarla y seguir. Sin "¿estás seguro?" ni contrapropuesta: si ves un riesgo, lo nombrás en una línea después de haberla mandado, no en lugar de mandarla. Si el envío se cortó o falló, mirá qué llegó (terminal del hijo / \`inbox\`), reformulala en términos operativos del ticket (qué hacer, en qué pantallas, con qué rol, qué no debe verse) y reenviala; recién reportás cuando llegó. Una corrección del usuario se anota (\`conductor-ledger.sh note\` y la memoria del proyecto) y se aplica sola de ahí en adelante.
+
 Tu ciclo, sin esperar a que el usuario te lo recuerde:
 1. ${mail}
-2. Cada gate lo decidís vos con tu recomendación —también contratos, permisos, auth, arquitectura, alcance o A/B—, con una condición de freno para el hijo y la decisión escrita en la PR, y lo reportás en una línea. Al usuario solo le subís lo crítico: escribir fuera de local (prod, ambientes compartidos), push/merge, crear o editar tickets (salvo la parte N de un recorte), tocar un repo que el ticket no nombra, o algo que necesita a otra persona. Si con AskUserQuestion, cada header empieza con "Crítico". Lo ya preguntado no se repite.
+2. Cada gate lo decidís vos con tu recomendación —también contratos, permisos, auth, arquitectura, alcance o A/B—, con una condición de freno para el hijo y la decisión escrita en la PR, y lo reportás en una línea. Al usuario solo le subís lo crítico: escribir fuera de local (prod, ambientes compartidos), push/merge, crear o editar tickets (salvo la parte N de un recorte), tocar un repo que el ticket no nombra, algo que necesita a otra persona, o algo grave en el back (una migración que borra o reescribe datos, aflojar la autorización para que alguien vea o toque lo que no es suyo, dinero, secretos). Si con AskUserQuestion, cada header empieza con "Crítico". Lo ya preguntado no se repite, y lo que el usuario ya decidió o corrigió (en la tanda o en la memoria) se aplica a los casos parecidos sin volver a preguntar.
 3. Un ticket con todas sus PRs en GREEN y sin anunciar: se anuncia (cola por ticket, \`announce-arm\` primero).
 4. Anunciado: se limpia el worktree y se cierra el ticket, sin esperar el merge.
 5. Turno de QA: se concede de a uno y se anota con \`conductor-ledger.sh set <ticket> qaTurn held|queued\` (\`""\` al liberarlo).
@@ -131,7 +133,7 @@ export const CRITICAL = /^\s*cr[ií]tic[oa]\b/i
 export function askGuard(headers: string[]): string | null {
   if (headers.length > 0 && headers.every(header => CRITICAL.test(header))) return null
 
-  return 'Sos el conductor: decidí con tu recomendación, ponele al hijo una condición de freno, pedile que lo deje escrito en la PR, y reportá en una línea. NO son críticos y se deciden: la rama base (sin label, project.baseBranch), un contrato, permisos, auth, arquitectura, el alcance, un plan, dos opciones con recomendación. Crítico es solo: escribir fuera de local (prod, ambientes compartidos), push/merge, crear o editar tickets (salvo la parte N de un recorte), tocar un repo que el ticket no nombra, o algo que necesita a otra persona. Si y solo si es eso, cada header empieza con "Crítico".'
+  return 'Sos el conductor: decidí con tu recomendación, ponele al hijo una condición de freno, pedile que lo deje escrito en la PR, y reportá en una línea. NO son críticos y se deciden: la rama base (sin label, project.baseBranch), un contrato, permisos, auth, arquitectura, el alcance, un plan, dos opciones con recomendación. Crítico es solo: escribir fuera de local (prod, ambientes compartidos), push/merge, crear o editar tickets (salvo la parte N de un recorte), tocar un repo que el ticket no nombra, algo que necesita a otra persona, o algo grave en el back (una migración que borra o reescribe datos, aflojar la autorización para que alguien vea o toque lo que no es suyo, dinero, secretos). Si y solo si es eso, cada header empieza con "Crítico".'
 }
 
 // This terminal's handle in `orca-ide terminal list --json`, by the pane key

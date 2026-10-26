@@ -69,6 +69,23 @@ pueda escribir: que el agente tenga credenciales no dice que la persona quiera
 que publique. Con `"agent"`, `tools/hooks/pretooluse-git-gate.sh` registrado a
 nivel usuario es lo que hace cumplir que la unica puerta sea el script.
 
+Un agente en `bypassPermissions` no deberia frenarse en ningun dialogo, pero
+bypass no saltea todo: una regla `ask` de settings o un hook de PreToolUse que
+devuelve `ask` (por ejemplo, los guardrails de un repo de trabajo, que el
+workbench no toca) abren el dialogo igual, y un conductor o un hijo sin nadie
+mirando queda congelado. Dos hooks a nivel usuario lo resuelven sin tocar el
+repo de trabajo:
+
+- `tools/hooks/permissionrequest-bypass.sh` en `PermissionRequest` (matcher
+  `*`): en bypass contesta el `ask` con allow y lo anota en
+  `$WORKBENCH_STATE_DIR/auto-allowed.log`; en cualquier otro modo no opina.
+- `tools/hooks/pretooluse-rm-gate.py` en `PreToolUse` (matcher `Bash`): la red
+  que queda para `rm -r` una vez que su `ask` se contesta solo. Bloquea `/`, el
+  home, sus carpetas directas y las rutas con variables.
+
+Lo que tiene que frenar de verdad es un `deny` o un hook que sale con 2: esos
+no llegan al dialogo y siguen valiendo.
+
 `tracker` va en `choices` y no en `detected` a proposito: aunque el probe
 pueda ver que hay mas de un tracker instalado, cual usar sigue siendo una
 eleccion de la persona, no algo que el sistema revele por si solo.

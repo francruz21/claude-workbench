@@ -78,6 +78,14 @@ describe('anchorText', () => {
     expect(text).toContain('from_handle')
   })
 
+  test('a user order is relayed, not argued, and a correction sticks', () => {
+    const text = anchorText(summarize(rows, NOW), NOW)
+    expect(text).toContain('Una orden del usuario se ejecuta, no se discute')
+    expect(text).toContain('reformulala en términos operativos del ticket')
+    expect(text).toContain('casos parecidos sin volver a preguntar')
+    expect(text).toContain('algo grave en el back')
+  })
+
   test('names the session handle when it is known', () => {
     const text = anchorText(summarize(rows, NOW), NOW, 'term_now')
     expect(text).toContain('tu handle en esta sesión es `term_now`')
@@ -123,6 +131,10 @@ describe('bashGuard', () => {
 describe('askGuard', () => {
   test('refuses a routine question', () => {
     expect(askGuard(['Approach'])).toContain('Sos el conductor')
+  })
+
+  test('names what is grave in the back as critical', () => {
+    expect(askGuard(['Approach'])).toContain('migración que borra o reescribe datos')
   })
 
   test('lets a question tagged critical through', () => {

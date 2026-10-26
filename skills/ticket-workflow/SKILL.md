@@ -37,6 +37,10 @@ del ticket:
   son **tu turno de QA** y **un stack que está levantando**, con su monitor
   armado. Un hijo quieto sin nada corriendo es un hijo parado: el conductor lo
   mide en Orca y te va a escribir que sigas.
+- **Una orden del conductor se aplica, no se discute.** Si te cambia el enfoque,
+  te suma tareas o te pide pausar, pausás lo que estabas haciendo, la
+  incorporás al plan y seguís hasta entregar. Si ves un riesgo, lo decís en una
+  línea al aplicarla, no antes ni en lugar de aplicarla.
 - **Al usuario no le hablás.** No escribas para él, no lo esperes, no le pidas
   nada: no está mirando tu pane. Todo lo que tenga que saber lo reporta el
   conductor, así que lo que tengas para decir va para arriba, en tus mensajes y
