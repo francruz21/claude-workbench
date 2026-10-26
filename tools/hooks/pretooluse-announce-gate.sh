@@ -80,14 +80,23 @@ if [ -n "$notified_label" ] &&
     deny "No pude leer el numero de PR de este comando, y la label '$notified_label' marca un PR como anunciado para siempre. Corre 'gh pr edit <n> --repo <owner/repo> --add-label $notified_label' con el numero explicito."
   fi
 
-  estado="$(jq -r --argjson n "$pr_num" '
-    [.tickets | to_entries[] | select(any(.value.prs[]?; .number == $n))][0]
-    | if . == null then "SIN-REGISTRO"
-      elif (.value.announced // null) == null then "SIN-ANUNCIO:" + .key
+  # El numero de PR es por repo: api#409 y front#409 son PRs distintos. Sin
+  # comparar el repo gana el primer ticket con ese numero, y la label se juzga
+  # contra el anuncio de otro ticket.
+  pr_repo="$(printf '%s' "$CMD" | grep -oE '(--repo|-R)[ =]+[^ ]+' | head -1 | sed -E 's/^(--repo|-R)[ =]+//')"
+
+  estado="$(jq -r --argjson n "$pr_num" --arg r "$pr_repo" '
+    [.tickets | to_entries[]
+      | select(any(.value.prs[]?; .number == $n and ($r == "" or .repo == $r)))]
+    | if length == 0 then "SIN-REGISTRO"
+      elif length > 1 and $r == "" then "AMBIGUO"
+      elif (.[0].value.announced // null) == null then "SIN-ANUNCIO:" + .[0].key
       else "OK" end' < "$LEDGER_FILE" 2>/dev/null || printf 'ERROR')"
 
   case "$estado" in
     OK) allow ;;
+    AMBIGUO)
+      deny "El PR #$pr_num aparece en mas de un ticket del registro, en repos distintos. Corre 'gh pr edit $pr_num --repo <owner/repo> --add-label $notified_label' con el repo explicito." ;;
     SIN-REGISTRO)
       deny "El PR #$pr_num no esta en el registro de esta tanda, asi que no puedo saber si su anuncio salio. Registralo con 'conductor-ledger.sh pr-add <TICKET> --repo <owner/repo> --number $pr_num' antes de etiquetarlo." ;;
     SIN-ANUNCIO:*)
