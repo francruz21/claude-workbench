@@ -131,6 +131,21 @@ export const register: Register = on => {
     return started
   })
 
+  // An organization's security plugin can skip skill.prompt: the Skill tool call
+  // and the slash command arm the session too.
+  on('tool.call', { tool: 'Skill' }, async ($, e, next) => {
+    const result = await next(e)
+    if (/(^|:)ticket-workflow$/.test(e.skill) && result.deny === undefined) await arm($, true)
+
+    return result
+  }).catch(($, e, next) => next(e))
+
+  on('command.run', { command: 'ticket-workflow' }, async ($, e, next) => {
+    await arm($, true)
+
+    return next(e)
+  }).catch(($, e, next) => next(e))
+
   // Loading the skill is what makes this session a child on a ticket.
   on('skill.prompt', { skill: 'ticket-workflow' }, async ($, e, next) => {
     const result = await next(e)

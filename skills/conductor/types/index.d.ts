@@ -53,6 +53,10 @@ declare module 'claude-code' {
       // prompt.compose ran for this conductor: the anchor reaches the system
       // prompt there, and stops riding on each prompt.
       isComposed: boolean
+      // Each open ticket's child, as last measured in Orca ("trabajando", "PARADO hace 6 min").
+      health: Record<string, string>
+      // Nudges typed into a stalled child, by handle: how many this stall, and when the last.
+      childNudges: Record<string, { count: number; at: number }>
     }
   }
 }

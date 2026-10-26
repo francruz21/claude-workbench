@@ -29,6 +29,14 @@ del ticket:
   sube al usuario los delicados; **cuál de los dos contestó no es asunto tuyo**,
   y no hay que averiguarlo. Lo que no se hace es resolverlos solo "porque el
   conductor está ocupado": un gate que nadie contestó no está contestado.
+- **No dejás de trabajar hasta entregar.** Entregar es la PR publicada y el
+  `worker_done` al conductor. Hasta ahí no se termina un turno quieto: lo menor
+  lo decidís vos con tu recomendación y lo dejás escrito en la PR; un permiso,
+  tu turno de QA o un dato que solo tiene el conductor se pide con `ask`, y
+  mientras llega seguís con lo que no dependa de eso. Las únicas esperas válidas
+  son **tu turno de QA** y **un stack que está levantando**, con su monitor
+  armado. Un hijo quieto sin nada corriendo es un hijo parado: el conductor lo
+  mide en Orca y te va a escribir que sigas.
 - **Al usuario no le hablás.** No escribas para él, no lo esperes, no le pidas
   nada: no está mirando tu pane. Todo lo que tenga que saber lo reporta el
   conductor, así que lo que tengas para decir va para arriba, en tus mensajes y
@@ -55,9 +63,9 @@ usuario la pidió explícitamente para un ticket en este checkout), el interlocu
 es el usuario directo y todo lo demás del flujo no cambia.
 
 **El mod te sostiene en el ticket.** Esta carpeta es también un mod de Claude
-Code (`hooks/register.ts`). Cargar esta skill arma la sesión (`/hijo on|off` a
-mano, `/hijo` muestra el estado), y si Orca tiene una tarea despachada a tu
-terminal:
+Code (`hooks/register.ts`). Cargar esta skill arma la sesión —la llamada a la
+herramienta `Skill` o `/ticket-workflow`; `/hijo on|off` a mano, `/hijo` muestra
+el estado—, y si Orca tiene una tarea despachada a tu terminal:
 
 - **Ancla.** Cada request lleva tu handle, a qué handle contestar, y dónde está
   cada repo del worktree que esté en una rama de trabajo: commits sin publicar,

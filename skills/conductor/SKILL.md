@@ -240,8 +240,10 @@ anotar el anuncio si los PRs del ticket no están todos en `GREEN`, y `labelled`
 se niega si no hay anuncio registrado. Un reloj no puede saltear eso.
 
 **El mod te sostiene el ciclo.** Esta carpeta es también un mod de Claude Code
-(`hooks/register.tsx`). Cargar esta skill arma la sesión como conductor (y
-queda armada si la sesión se reanuda); `/tanda on|off` la arma o desarma a mano.
+(`hooks/register.tsx`). Cargar esta skill arma la sesión como conductor —la
+llamada a la herramienta `Skill` o `/conductor`, porque una organización puede
+saltear el evento de la skill— y queda armada si la sesión se reanuda; `/tanda
+on|off` la arma o desarma a mano.
 En una sesión armada:
 
 - **Ancla.** Cada request lleva una sección del system prompt con el `brief` de
@@ -258,6 +260,11 @@ En una sesión armada:
   `check --wait` se niega (volvería vacío). Los `heartbeat` del bloque no te
   cuestan un turno: se sacan, y el pane muestra `♥ hace N min` por hijo. Un
   bloque con solo heartbeats no entra.
+- **Salud de los hijos.** Cada minuto mide a cada hijo en Orca (trabajando,
+  esperando, te espera, parado, trabado, muerto) y lo pone en el ancla. A un
+  hijo parado le escribe que siga, hasta tres veces; lo que te necesita
+  —muerto, trabado en un permiso, un `ask` sin contestar, un parado que no
+  arrancó— te despierta con el dato.
 - **Guardas.** Se niegan `orchestration check --wait` sin `--types`, un
   `worktree create` para un ticket que ya está abierto en el registro, un
   `AskUserQuestion` cuyos headers no empiezan con "Crítico" (el mensaje dice
@@ -728,6 +735,14 @@ ningún `/model`. Ver
 [`reference/agents.md`](reference/agents.md#el-modelo-del-hijo).
 
 ### 4. Supervisión — resolver o escalar
+
+**Ningún hijo se queda quieto.** El estado de cada uno se mide en Orca, no se
+supone: un hijo parado se hace seguir, uno trabado en un permiso se destraba
+(si el conductor lo puede autorizar, lo autoriza), uno muerto se retoma, y un
+`ask` se contesta apenas llega. Las únicas esperas válidas de un hijo son su
+turno de QA y un stack que levanta. Nunca se le dice al usuario que un hijo
+"está trabajando" sin haberlo medido. Ver
+[`reference/agents.md`](reference/agents.md#la-salud-de-cada-hijo-se-mide-no-se-supone).
 
 **Si Orca te inyecta los mensajes, la inyección manda**: cada bloque
 `--- Orchestration Messages ---` entra como turno, ya leído, y un `check --wait`

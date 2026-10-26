@@ -3,6 +3,11 @@ import type { On } from 'claude-code'
 
 const NOW = Date.parse('2026-10-13T12:00:00Z')
 
+// The same ticket before it has a PR: its child is still on the hook to deliver.
+const LEDGER_NO_PR = JSON.stringify({
+  tickets: { 'TCK-1': { name: 'TCK-1 · uno', state: 'open', updatedAt: '2026-10-13T11:58:00Z', child: { handle: 'term_a' }, prs: [] } },
+})
+
 const LEDGER = JSON.stringify({
   tickets: {
     'TCK-1': {
@@ -17,10 +22,15 @@ const LEDGER = JSON.stringify({
 
 // The host beneath the plugin: a workspace at /w with one open ticket, an Orca
 // inbox the test fills, and every prompt the plugin submits recorded.
-function host(on: On) {
+function host(on: On, ledgerText = LEDGER) {
   const inbox: object[] = []
   const prompts: string[] = []
   const contexts: (readonly string[])[] = []
+  // Orca's terminals (null: the list answers like the inbox, as before), the
+  // tail every `terminal read` returns, and the handles a nudge was typed into.
+  let terminals: object[] | null = null
+  let tail = ''
+  const sent: string[] = []
   const clock = mock.clock(on, { now: NOW })
   mock.env(on, { HOME: '/h', WORKBENCH_WORKSPACE: '/w' })
   mock.store(on)
@@ -29,17 +39,19 @@ function host(on: On) {
   on('fs.read', async ($, e) => {
     if (e.path !== '/h/.claude/workbench/state/conductor-w.json') throw new Error('ENOENT')
 
-    return { value: LEDGER }
+    return { value: ledgerText }
   })
-  on('process.run', async ($, e) => ({
-    value: {
-      exitCode: 0,
-      stdout: JSON.stringify({ result: { messages: inbox } }),
-      stderr: '',
-      isStdoutTruncated: false,
-      isStderrTruncated: false,
-    },
-  }))
+  on('process.run', async ($, e) => {
+    const cmd = e.argv.join(' ')
+    if (cmd.includes('terminal send')) sent.push(e.argv[e.argv.indexOf('--terminal') + 1] ?? '')
+    const stdout = cmd.includes('terminal list') && terminals !== null
+      ? JSON.stringify({ result: { terminals } })
+      : cmd.includes('terminal read')
+        ? JSON.stringify({ result: { terminal: { tail: tail.split('\n') } } })
+        : JSON.stringify({ result: { messages: inbox } })
+
+    return { value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+  })
   on('command.register', async ($, e) => ({ value: { command: e.name } }))
   on('ui.open', async () => ({ value: { isPlaced: true } }))
   on('ui.status', async () => ({ value: undefined }))
@@ -54,7 +66,14 @@ function host(on: On) {
   on('prompt.compose', async () => ({ sections: [{ id: 'core', text: 'core', scope: 'shared' as const }] }))
   on('tool.call', async () => ({ result: 'ran' }) as never)
 
-  return { inbox, prompts, contexts, clock }
+  const orca = {
+    set: (list: object[] | null, screen = '') => {
+      terminals = list
+      tail = screen
+    },
+  }
+
+  return { inbox, prompts, contexts, clock, sent, orca }
 }
 
 // The tests drive the engine with partial inputs, so `$` is loosely typed here.
@@ -164,4 +183,61 @@ test('with prompt.compose skipped, the anchor rides on each prompt until compose
   await compose($)
   await $.prompt.submit({ text: 'seguí', origin: { kind: 'composer' } } as never)
   expect(contexts.at(-1)).toEqual([])
+})
+
+test('the Skill tool call arms the session, since skill.prompt can be skipped', async ($: any, on: On) => {
+  host(on)
+  await start($)
+  await $.tool.call({ tool: 'Skill', tool_use_id: 's1', skill: 'conductor' } as never)
+
+  const anchor = (await compose($)).sections.find((s: { id: string }) => s.id === 'conductor:anchor')
+  expect(anchor?.text).toContain('TCK-1 · uno')
+})
+
+test('a stalled child is nudged by the mod, and the conductor hears only once nudges run out', async ($: any, on: On) => {
+  const { prompts, clock, sent, orca } = host(on, LEDGER_NO_PR)
+  await start($)
+  await $.skill.prompt({ skill: 'conductor', text: 'skill body' })
+  orca.set([{ handle: 'term_a', title: '✳ TCK-1 · uno', connected: true, orphaned: false, lastOutputAt: NOW - 10 * 60_000 }], '● listo, espero.')
+
+  await clock.advance(60_000)
+  await clock.settle()
+  expect(sent).toEqual(['term_a'])
+  expect(prompts.filter(p => p.includes('PARADO'))).toEqual([])
+
+  // Two more stalls, five minutes apart: the third pass wakes the conductor.
+  for (let i = 0; i < 2; i++) {
+    await clock.advance(5 * 60_000)
+    await clock.settle()
+  }
+  expect(sent.length).toBe(3)
+  expect(prompts.some(p => p.includes('TCK-1 · uno: sigue PARADO'))).toBe(true)
+
+  const anchor = (await compose($)).sections.find((s: { id: string }) => s.id === 'conductor:anchor')
+  expect(anchor?.text).toContain('Estado real de los hijos')
+  expect(anchor?.text).toContain('PARADO')
+})
+
+test('a child waiting on its own stack is left alone', async ($: any, on: On) => {
+  const { prompts, clock, sent, orca } = host(on, LEDGER_NO_PR)
+  await start($)
+  await $.skill.prompt({ skill: 'conductor', text: 'skill body' })
+  orca.set([{ handle: 'term_a', title: '✳ TCK-1 · uno', connected: true, orphaned: false, lastOutputAt: NOW - 20 * 60_000 }],
+    '● Esperando que la api arranque.\n✻ done · 1 shell, 1 monitor still running')
+
+  await clock.advance(60_000)
+  await clock.settle()
+  expect(sent).toEqual([])
+  expect(prompts.filter(p => p.includes('Estado real'))).toEqual([])
+})
+
+test('a dead child wakes the conductor right away', async ($: any, on: On) => {
+  const { prompts, clock, orca } = host(on)
+  await start($)
+  await $.skill.prompt({ skill: 'conductor', text: 'skill body' })
+  orca.set([])
+
+  await clock.advance(60_000)
+  await clock.settle()
+  expect(prompts.some(p => p.includes('TCK-1 · uno: MUERTO'))).toBe(true)
 })
