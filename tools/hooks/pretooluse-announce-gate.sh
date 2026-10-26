@@ -20,6 +20,9 @@
 #      un arm vigente de `conductor-ledger.sh announce-arm`, que es lo unico
 #      que verifica el gate en vivo contra GitHub.
 #
+#   0. `mcp__discord__discord_send` al canal de anuncios -> lo mismo, con o sin
+#      registro: el bot no es una puerta lateral (transporte discord-mcp).
+#
 # Fuera de eso no opina. Si no hay registro para este workspace no es una sesion
 # de conductor y todo pasa: los hijos, que corren en su propio worktree, nunca
 # ven este hook actuar.
@@ -56,6 +59,20 @@ deny() {
 command -v jq >/dev/null 2>&1 || allow
 
 TOOL="$(printf '%s' "$PAYLOAD" | jq -r '.tool_name // ""' 2>/dev/null || true)"
+
+# --- 0. El envio por el bot de Discord (transporte discord-mcp) -------------
+# Va antes que todo lo de Bash, y no depende de que exista un registro: un bot
+# al canal de anuncios sin arm es un anuncio sin gate, se llame desde el
+# conductor o desde un anuncio suelto. A otro canal no se opina.
+if [ "$TOOL" = mcp__discord__discord_send ]; then
+  url="$(jq -r '.announce.channelUrl // ""' "$CONFIG_DIR/user.json" 2>/dev/null || true)"
+  chan_id="$(printf '%s' "$url" | grep -oE '[0-9]{6,}' | tail -1)"
+  dest="$(printf '%s' "$PAYLOAD" | jq -r '.tool_input.channel // .tool_input.channelId // ""' 2>/dev/null || true)"
+  if [ -z "$chan_id" ] || [ "$dest" != "$chan_id" ]; then allow; fi
+  if bash "$LEDGER" announce-armed >/dev/null 2>&1; then allow; fi
+  deny "BLOQUEADO: el bot no puede anunciar en el canal sin un ticket habilitado. Corre 'conductor-ledger.sh announce-arm <TICKET>' (ver la skill announce-prs): verifica el gate en vivo y habilita el envio por 10 minutos."
+fi
+
 [ "$TOOL" = Bash ] || allow
 
 CMD="$(printf '%s' "$PAYLOAD" | jq -r '.tool_input.command // ""' 2>/dev/null || true)"

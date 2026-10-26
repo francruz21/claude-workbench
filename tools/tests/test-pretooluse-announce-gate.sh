@@ -172,4 +172,20 @@ led pr-gate TCK-2 --number 380 --gate GREEN >/dev/null
 led announced TCK-2 >/dev/null
 assert_exit 1 'announced consume el arm' led announce-armed
 
+# --- 0. el bot de Discord (transporte discord-mcp) -------------------------
+mcp_send() { run_hook_raw "{\"tool_name\":\"mcp__discord__discord_send\",\"tool_input\":{\"channel\":\"$1\",\"message\":\"hola\"}}"; }
+# announced acaba de consumir el arm: no hay ninguno vigente.
+assert_contains '"permissionDecision":"deny"' 'el bot al canal de anuncios sin arm se deniega' mcp_send 555666777888
+assert_not_contains 'deny' 'el bot a otro canal no se toca' mcp_send 999000111222
+LF="$(led path)" python3 - <<'PY'
+import json,os,time
+p=os.environ['LF']; d=json.load(open(p))
+d['armedTicket']='TCK-2'; d['armedUntil']=int(time.time())+600
+json.dump(d,open(p,'w'))
+PY
+assert_not_contains 'deny' 'con un arm vigente el bot anuncia' mcp_send 555666777888
+# Sin registro tampoco hay puerta lateral: el arm vive en el registro.
+mcp_send_sin_tanda() { WORKBENCH_WORKSPACE="$TMP/sin-tanda" mcp_send 555666777888; }
+assert_contains '"permissionDecision":"deny"' 'sin registro, el bot al canal de anuncios se deniega' mcp_send_sin_tanda
+
 report 'test-pretooluse-announce-gate'

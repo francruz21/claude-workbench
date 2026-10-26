@@ -50,6 +50,7 @@ probe podria pisar la respuesta que la persona ya dio.
 | `tracker` | string \| null | el tracker de tickets a usar; `null` si no se elegio ninguno todavia |
 | `worktrees` | string | `"orca"` \| `"git-worktree"` \| `"checkout"` |
 | `announce` | string | `"canal"` \| `"skip"` |
+| `announceTransport` | string | por donde sale el anuncio: `"browser"` (la pestaña del canal, con la sesion del usuario) \| `"discord-mcp"` (un bot, por el servidor MCP `discord`); ver la skill `announce-prs` |
 | `publish` | string | `"human"` (la rama la publica una persona) \| `"agent"` (la publica quien trabaja el ticket, solo con `tools/publish-branch.sh`) |
 | `askEveryTime` | string[] | claves de `choices` a re-preguntar siempre en vez de usar el valor guardado |
 | `modelRouting` | object (opcional) | el ruteo de modelos del conductor; ausente equivale a `enabled: false` |
