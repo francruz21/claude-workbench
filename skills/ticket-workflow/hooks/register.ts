@@ -5,16 +5,21 @@ import type { GitState } from '../types'
 import {
   AGENT_DENIED,
   ASK_USER_DENIED,
+  RELAY_SUBJECT,
   anchorText,
   askContext,
   bashGuard,
+  coordinatorOf,
   isAsk,
   isDispatched,
+  isFromConductor,
   isWorkBranch,
   latestForMe,
   ownHandle,
   parseGitStatus,
   parseMessages,
+  relayBody,
+  relayDropText,
   repoLine,
   submodulePaths,
   unreadForMe,
@@ -96,6 +101,23 @@ async function arm($: EngineInterface, on: boolean): Promise<void> {
 
 const isChild = async ($: EngineInterface) => (await read($, isArmed)) && (await read($, dispatched))
 
+// The person's own gesture: typed at this terminal, or through Remote Control.
+const isTyped = (origin: { kind: string } | undefined) => origin?.kind === 'composer' || origin?.kind === 'bridge'
+
+// The person wrote to the child: the child does not act on it. The message goes
+// to the conductor, who asks the person, and the prompt never reaches the model.
+async function relay($: EngineInterface, text: string): Promise<{ drop: string }> {
+  const me = await read($, handle)
+  let to = await read($, conductor)
+  if (to === null && me !== null) to = coordinatorOf((await orca($, 'orchestration', 'task-list')) ?? '', me)
+  const isSent =
+    me !== null &&
+    to !== null &&
+    (await orca($, 'orchestration', 'send', '--to', to, '--from', me, '--type', 'escalation', '--subject', RELAY_SUBJECT, '--body', relayBody(text, me))) !== null
+
+  return { drop: relayDropText(to, isSent) }
+}
+
 // Wakes the child when the conductor wrote to it and it did not read it: the
 // usual reason a child sits idle after an answer.
 async function poll($: EngineInterface): Promise<void> {
@@ -173,7 +195,9 @@ export const register: Register = on => {
   // An organization's security plugin can skip a user plugin's prompt.compose.
   // Until compose is seen running, the anchor rides on each prompt as context.
   on('prompt.submit', async ($, e, next) => {
-    if (e.command !== undefined || (await read($, isComposed)) || !(await isChild($))) return next(e)
+    if (e.command !== undefined || !(await isChild($))) return next(e)
+    if (isTyped(e.origin) && !isFromConductor(e.text)) return relay($, e.text)
+    if (await read($, isComposed)) return next(e)
     const text = anchorText(await read($, handle), await read($, repos), await read($, conductor))
 
     return next({ ...e, context: [...(e.context ?? []), text] })

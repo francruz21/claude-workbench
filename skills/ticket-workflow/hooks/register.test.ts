@@ -6,6 +6,7 @@ import type { On } from 'claude-code'
 function host(on: On, opts: { isDispatched: boolean }) {
   const inbox: object[] = []
   const prompts: string[] = []
+  const sends: string[][] = []
   const contexts: (readonly string[])[] = []
   const clock = mock.clock(on, { now: 0 })
   mock.env(on, { ORCA_PANE_KEY: 'tab2:leafB' })
@@ -31,11 +32,16 @@ function host(on: On, opts: { isDispatched: boolean }) {
       return out(JSON.stringify({ result: { terminals: [{ handle: 'term_me', tabId: 'tab2', leafId: 'leafB' }] } }))
     }
     if (cmd.includes('task-list')) {
-      const tasks = opts.isDispatched ? [{ status: 'dispatched', assignee_handle: 'term_me' }] : []
+      const tasks = opts.isDispatched ? [{ status: 'dispatched', assignee_handle: 'term_me', created_by_terminal_handle: 'term_c' }] : []
 
       return out(JSON.stringify({ result: { tasks } }))
     }
     if (cmd.includes('orchestration inbox')) return out(JSON.stringify({ result: { messages: inbox } }))
+    if (cmd.includes('orchestration send')) {
+      sends.push([...e.argv])
+
+      return out(JSON.stringify({ ok: true }))
+    }
     if (cmd === 'git rev-parse --show-toplevel') return out('/wt/repo\n')
     if (cmd === 'git submodule status') return out('')
     if (cmd.startsWith('git status')) return out('# branch.head fix/TCK-1-x\n1 .M N... a\n')
@@ -45,7 +51,7 @@ function host(on: On, opts: { isDispatched: boolean }) {
     return { value: { exitCode: 1, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
   })
 
-  return { inbox, prompts, contexts, clock }
+  return { inbox, prompts, sends, contexts, clock }
 }
 
 const start = ($: any) => $.session.start({ cwd: '/wt/repo', surface: 'terminal', isInteractive: true })
@@ -107,11 +113,46 @@ test('with prompt.compose skipped, the anchor rides on each prompt until compose
   await $.skill.prompt({ skill: 'ticket-workflow', text: 'skill body' })
 
   // An organization's security plugin skipped compose: the anchor goes as context.
-  await $.prompt.submit({ text: 'seguí', origin: { kind: 'composer' } } as never)
+  await $.prompt.submit({ text: '[conductor] seguí', origin: { kind: 'composer' } } as never)
   expect(contexts.at(-1)?.length).toBe(1)
 
   // Once compose runs, the system prompt carries it and the context stops.
   await compose($)
-  await $.prompt.submit({ text: 'seguí', origin: { kind: 'composer' } } as never)
+  await $.prompt.submit({ text: '[conductor] seguí', origin: { kind: 'composer' } } as never)
   expect(contexts.at(-1)).toEqual([])
+})
+
+test('what the person types to a child goes to the conductor, not to the model', async ($: any, on: On) => {
+  const { prompts, sends } = host(on, { isDispatched: true })
+  await start($)
+  await $.skill.prompt({ skill: 'ticket-workflow', text: 'skill body' })
+
+  // The person typed in the child's terminal by mistake: nothing enters, the conductor gets it.
+  const typed = await $.prompt.submit({ text: 'anunciá las PRs en Discord', origin: { kind: 'composer' } } as never)
+  expect(typed.drop).toContain('Le pasé tu mensaje al conductor (term_c)')
+  expect(prompts).toEqual([])
+  expect(sends.length).toBe(1)
+  expect(sends[0]).toContain('escalation')
+  expect(sends[0].join(' ')).toContain('--to term_c --from term_me')
+  expect(sends[0].at(sends[0].indexOf('--body') + 1)).toContain('anunciá las PRs en Discord')
+
+  // The conductor's own words, and the dispatch Orca injects, still reach it.
+  await $.prompt.submit({ text: '[conductor] seguí con el QA', origin: { kind: 'composer' } } as never)
+  await $.prompt.submit({ text: 'Task t1 · when done send worker_done to term_c', origin: { kind: 'composer' } } as never)
+  expect(prompts).toEqual(['[conductor] seguí con el QA', 'Task t1 · when done send worker_done to term_c'])
+  expect(sends.length).toBe(1)
+
+  // A slash command is not a message: /hijo off still works from the keyboard.
+  await $.prompt.submit({ text: '/hijo off', command: { name: 'hijo', args: 'off' }, origin: { kind: 'composer' } } as never)
+  expect(sends.length).toBe(1)
+})
+
+test('without a conductor, what the person types reaches the session', async ($: any, on: On) => {
+  const { prompts, sends } = host(on, { isDispatched: false })
+  await start($)
+  await $.skill.prompt({ skill: 'ticket-workflow', text: 'skill body' })
+
+  await $.prompt.submit({ text: 'seguí', origin: { kind: 'composer' } } as never)
+  expect(prompts).toEqual(['seguí'])
+  expect(sends).toEqual([])
 })

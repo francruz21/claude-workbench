@@ -94,11 +94,34 @@ Tu ciclo, sin esperar a que el usuario te lo recuerde:
 4. Anunciado: se limpia el worktree y se cierra el ticket, sin esperar el merge.
 5. Turno de QA: se concede de a uno y se anota con \`conductor-ledger.sh set <ticket> qaTurn held|queued\` (\`""\` al liberarlo).
 
-Mensajería: respondé al \`from_handle\` del último mensaje del hijo, no al del preamble; \`reply\` y \`terminal send\` van en la misma llamada.`
+Mensajería: respondé al \`from_handle\` del último mensaje del hijo, no al del preamble; \`reply\` y \`terminal send\` van en la misma llamada, y el \`--text\` empieza con "${CONDUCTOR_MARK} ".
+Una \`escalation\` "Mensaje del usuario en la terminal del hijo" es el usuario que le escribió a un hijo por error: el hijo no lo hizo. Mostráselo y preguntale en el chat qué quiere; con su respuesta, mandale la orden al hijo.`
 }
 
 const ORCH_CHECK = /\borca(?:-ide)?\s+orchestration\s+check\b/
 const WORKTREE_CREATE = /\borca(?:-ide)?\s+worktree\s+create\b/
+const TERMINAL_SEND = /\borca(?:-ide)?\s+terminal\s+send\b/
+const SEND_TEXT = /--text[ =](?:"([^"]*)"|'([^']*)'|(\$')|(\S+))/
+
+// What the conductor types into a child's terminal starts with this mark: the
+// child's mod relays to the conductor anything typed there without it, as the
+// person's (ticket-workflow/hooks/child.ts).
+export const CONDUCTOR_MARK = '[conductor]'
+
+// A permission dialog's answer: the dialog takes the keys, no prompt is submitted.
+const DIALOG_KEY = /^(?:\d|y|n|yes|no|s[ií])$/i
+
+// A `terminal send` of free text without the mark, which the child would take
+// for the person's words. Slash commands, dialog keys and control keys ($'\x02')
+// carry none.
+function isUnmarkedSend(part: string): boolean {
+  if (!TERMINAL_SEND.test(part)) return false
+  const m = SEND_TEXT.exec(part)
+  if (m === null || m[3] !== undefined) return false
+  const text = (m[1] ?? m[2] ?? m[4] ?? '').trim()
+
+  return text !== '' && !text.startsWith('/') && !DIALOG_KEY.test(text) && !text.startsWith(CONDUCTOR_MARK)
+}
 
 // A reason to refuse this Bash command, or null to let it run.
 export function bashGuard(command: string, rows: Row[], isInjected = false): string | null {
@@ -108,6 +131,9 @@ export function bashGuard(command: string, rows: Row[], isInjected = false): str
     }
     if (ORCH_CHECK.test(part) && /--wait\b/.test(part) && !/--types\b/.test(part)) {
       return 'check --wait sin --types entrega mensajes viejos de otras tandas como si fueran la respuesta. Agregá --types worker_done,escalation,decision_gate.'
+    }
+    if (isUnmarkedSend(part)) {
+      return `lo que le escribís a un hijo por su terminal empieza con "${CONDUCTOR_MARK} " (también con "$(cat archivo)": --text "${CONDUCTOR_MARK} $(cat archivo)"). Sin esa firma el hijo lo toma como un mensaje del usuario: no lo hace y te lo reenvía.`
     }
     if (WORKTREE_CREATE.test(part)) {
       const lower = part.toLowerCase()

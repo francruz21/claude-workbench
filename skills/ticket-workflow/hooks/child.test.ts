@@ -3,12 +3,15 @@ import { describe, expect, test } from 'claude-code/testing'
 import {
   anchorText,
   bashGuard,
+  coordinatorOf,
   isAsk,
   isDispatched,
+  isFromConductor,
   isWorkBranch,
   latestForMe,
   ownHandle,
   parseGitStatus,
+  relayDropText,
   submodulePaths,
   unreadForMe,
   wakeText,
@@ -111,5 +114,34 @@ describe('anchor', () => {
     )
     expect(text).toContain('`front` en `fix/TCK-1-x`: 2 commit(s) sin publicar, 1 archivo(s) sin commitear, rama sin publicar.')
     expect(text).toContain('respondé a ese')
+  })
+})
+
+describe('a message from the person', () => {
+  test('only the marked text and the dispatch count as the conductor', () => {
+    expect(isFromConductor('[conductor] term_me: seguí')).toBe(true)
+    expect(isFromConductor('  [conductor] seguí')).toBe(true)
+    expect(isFromConductor('Send worker_done to term_c when the task is done')).toBe(true)
+    expect(isFromConductor('anunciá en Discord')).toBe(false)
+    expect(isFromConductor('el conductor dijo que sigas')).toBe(false)
+  })
+
+  test('the conductor is the one that dispatched the live task', () => {
+    const list = JSON.stringify({
+      result: {
+        tasks: [
+          { status: 'completed', assignee_handle: 'term_me', created_by_terminal_handle: 'term_old' },
+          { status: 'dispatched', assignee_handle: 'term_me', created_by_terminal_handle: 'term_c' },
+        ],
+      },
+    })
+    expect(coordinatorOf(list, 'term_me')).toBe('term_c')
+    expect(coordinatorOf(list, 'term_x')).toBe(null)
+    expect(coordinatorOf('no json', 'term_me')).toBe(null)
+  })
+
+  test('the person is told where the message went, or that it did not', () => {
+    expect(relayDropText('term_c', true)).toContain('(term_c)')
+    expect(relayDropText(null, false)).toContain('Escribíselo al conductor')
   })
 })

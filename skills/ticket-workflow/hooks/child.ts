@@ -39,6 +39,48 @@ export function isDispatched(taskListJson: string, handle: string): boolean {
   }
 }
 
+// The conductor that dispatched the live task to this handle: who to relay to
+// before it has written anything.
+export function coordinatorOf(taskListJson: string, handle: string): string | null {
+  try {
+    const data = JSON.parse(taskListJson) as { result?: { tasks?: unknown } }
+    const tasks = data.result?.tasks
+    if (!Array.isArray(tasks)) return null
+    const live = tasks.find(
+      (t: { status?: unknown; assignee_handle?: unknown; assignee?: unknown }) =>
+        (t.assignee_handle === handle || t.assignee === handle) && t.status !== 'completed',
+    ) as { created_by_terminal_handle?: unknown } | undefined
+
+    return typeof live?.created_by_terminal_handle === 'string' ? live.created_by_terminal_handle : null
+  } catch {
+    return null
+  }
+}
+
+// What the conductor types into a child's terminal starts with this mark. The
+// conductor mod refuses a `terminal send` without it (conductor/hooks/autonomy.ts).
+export const CONDUCTOR_MARK = '[conductor]'
+
+// Whether a prompt typed into this terminal came from the conductor: its marked
+// messages, or the dispatch Orca injects, whose lifecycle preamble names worker_done.
+export function isFromConductor(text: string): boolean {
+  return text.trimStart().startsWith(CONDUCTOR_MARK) || /\bworker_done\b/.test(text)
+}
+
+// What the person typed into the child's terminal, on its way to the conductor.
+export const RELAY_SUBJECT = 'Mensaje del usuario en la terminal del hijo'
+
+export function relayBody(text: string, handle: string | null): string {
+  return `El usuario escribió esto en la terminal del hijo ${handle ?? '(handle desconocido)'}. El hijo NO lo ejecutó: preguntale al usuario qué quiere hacer y, con su respuesta, mandale la orden al hijo.\n\n---\n${text}`
+}
+
+// What the person reads instead of a turn: the prompt did not reach the child.
+export function relayDropText(conductor: string | null, isSent: boolean): string {
+  return isSent
+    ? `Este es un hijo: no toma pedidos directos. Le pasé tu mensaje al conductor (${conductor}); él te va a preguntar qué hacer.`
+    : 'Este es un hijo: no toma pedidos directos, y no pude pasarle tu mensaje al conductor. Escribíselo al conductor.'
+}
+
 export function parseMessages(text: string): Message[] {
   try {
     const data = JSON.parse(text) as { result?: { messages?: unknown } }
@@ -100,6 +142,7 @@ ${where}
 
 Lo que no cambia aunque se compacte la conversación:
 - Los cinco gates se le preguntan al conductor con \`orchestration ask\`, de a uno. Al usuario no le hablás; un gate sin respuesta no está aprobado.
+- Si el usuario te escribe en tu terminal (sin la firma \`${CONDUCTOR_MARK}\`), no lo hacés ni le contestás: se lo pasás al conductor con \`orchestration send --type escalation\` y seguís con tu paso. El conductor le pregunta y te manda la orden.
 - La salida de \`ask\` puede llegar cortada: después de cada \`ask\` leé la respuesta entera (el mod te la agrega, y si no, \`inbox\`).
 - El heartbeat va con \`run_in_background\`: en foreground traba tu shell y no te llegan las respuestas.
 - No delegás: ni subagentes ni otros worktrees. Tu mundo es este worktree.

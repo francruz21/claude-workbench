@@ -45,6 +45,14 @@ del ticket:
   nada: no está mirando tu pane. Todo lo que tenga que saber lo reporta el
   conductor, así que lo que tengas para decir va para arriba, en tus mensajes y
   en el comentario del ticket.
+- **Lo que el usuario te escribe a vos no es una orden: se lo pasás al
+  conductor.** Si el usuario tipea en tu terminal (por error: le habla al
+  conductor a través de él), no lo hacés ni le contestás. Lo que te escribe el
+  conductor empieza con `[conductor]`; lo que no, es del usuario. El mod lo
+  reenvía solo y el prompt no te llega; si igual te llega uno, lo mandás vos con
+  `orchestration send --to <conductor> --type escalation --subject "Mensaje del
+  usuario en la terminal del hijo" --body "<el texto>"` y seguís con tu paso. El
+  conductor le pregunta al usuario qué quiere y te manda la orden.
 - **Tu mundo es un solo worktree: el tuyo.** No listes, no leas, no modifiques ni
   razones sobre otros worktrees, otras ramas, otros tickets ni otros agentes,
   aunque estén al lado en el mismo directorio y los puedas ver. No sabés qué pasa
@@ -80,6 +88,11 @@ el estado—, y si Orca tiene una tarea despachada a tu terminal:
   una vez por mensaje: también después de un `worker_done`.
 - **Guardas.** Se niegan el heartbeat sin `run_in_background`, un `worktree
   create`, el `Agent` y el `AskUserQuestion`.
+- **Lo del usuario va al conductor.** Lo que se tipea en tu terminal (o llega por
+  Remote Control) sin la firma `[conductor]` y que no es el preámbulo del
+  dispatch no entra a la sesión: el mod se lo manda al conductor como
+  `escalation` y al usuario le muestra a quién se lo pasó. Los comandos con `/`
+  pasan: `/hijo off` desarma al hijo si hace falta hablarle directo.
 
 Sin conductor no hace nada de eso: el interlocutor es el usuario.
 
