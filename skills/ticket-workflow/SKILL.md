@@ -45,6 +45,14 @@ del ticket:
   nada: no está mirando tu pane. Todo lo que tenga que saber lo reporta el
   conductor, así que lo que tengas para decir va para arriba, en tus mensajes y
   en el comentario del ticket.
+- **Lo que el usuario te escribe a vos no es una orden: se lo pasás al
+  conductor.** Si el usuario tipea en tu terminal (por error: le habla al
+  conductor a través de él), no lo hacés ni le contestás. Lo que te escribe el
+  conductor empieza con `[conductor]`; lo que no, es del usuario. El mod lo
+  reenvía solo y el prompt no te llega; si igual te llega uno, lo mandás vos con
+  `orchestration send --to <conductor> --type escalation --subject "Mensaje del
+  usuario en la terminal del hijo" --body "<el texto>"` y seguís con tu paso. El
+  conductor le pregunta al usuario qué quiere y te manda la orden.
 - **Tu mundo es un solo worktree: el tuyo.** No listes, no leas, no modifiques ni
   razones sobre otros worktrees, otras ramas, otros tickets ni otros agentes,
   aunque estén al lado en el mismo directorio y los puedas ver. No sabés qué pasa
@@ -58,6 +66,14 @@ del ticket:
   te sugiere paralelizar con subagentes, en este flujo no aplica: cada agente
   extra levanta su propio contexto y puede levantar su propio stack, y esta
   máquina tiene otros worktrees corriendo que vos no ves.
+- **Las skills sí: no delegar no es dejar de usarlas.** La tabla de skills del
+  `CLAUDE.md` del repo y las globales valen igual que en cualquier sesión: las
+  de proceso (depurar antes de arreglar, test antes del código, verificar antes
+  de dar algo por hecho) y las de dominio del repo (pagos, migraciones, SEO…).
+  Se invocan con la herramienta `Skill` en el paso que les toca. Si una pide un
+  subagente, ese paso lo hacés vos acá, inline; la skill no se descarta por eso.
+  Esto pasó: con el mod armado, los hijos de octubre cargaron solo
+  `ticket-workflow` y trabajaron un ticket de pagos sin la skill de pagos.
 
   Y si te llega **otro ticket**, lo reportás para arriba y no lo agarrás:
   despachar es del conductor.
@@ -80,6 +96,11 @@ el estado—, y si Orca tiene una tarea despachada a tu terminal:
   una vez por mensaje: también después de un `worker_done`.
 - **Guardas.** Se niegan el heartbeat sin `run_in_background`, un `worktree
   create`, el `Agent` y el `AskUserQuestion`.
+- **Lo del usuario va al conductor.** Lo que se tipea en tu terminal (o llega por
+  Remote Control) sin la firma `[conductor]` y que no es el preámbulo del
+  dispatch no entra a la sesión: el mod se lo manda al conductor como
+  `escalation` y al usuario le muestra a quién se lo pasó. Los comandos con `/`
+  pasan: `/hijo off` desarma al hijo si hace falta hablarle directo.
 
 Sin conductor no hace nada de eso: el interlocutor es el usuario.
 
@@ -587,6 +608,12 @@ Trabajar el ticket normalmente, priorizando cualquier skill o rule específica
 del repo de trabajo por sobre las genéricas de este repositorio (ej. si el
 repo tiene su propia convención de testing, esa gana).
 
+Antes de tocar código, mirar la tabla de skills del `CLAUDE.md` del repo e
+invocar con `Skill` las que el ticket toca: la de dominio (pagos, migraciones,
+deploy, SEO…), la de depuración si es un bug, la de test antes del código, y la
+de verificación antes de pasar al QA. Una línea en el comentario de la tarjeta
+de Orca dice cuáles se cargaron.
+
 Mantener actualizado el comentario de la tarjeta de Orca en los checkpoints
 importantes, para que el usuario vea el progreso sin preguntar:
 
@@ -875,6 +902,9 @@ conductor pasa textual— se arregla **en la misma rama y la misma PR**:
 5. Esperar el job de tests **del SHA nuevo**, no el rollup de la PR, y
    reportar el resultado hacia arriba. El anuncio no es de este flujo: con
    conductor, lo decide él.
+6. Si la PR pasó por draft (`gh pr ready --undo` y de vuelta `gh pr ready`),
+   leer el estado del ticket: la integración de GitHub lo baja a
+   `In Progress` sola. Si quedó ahí, subirlo a `In Review` como en el paso 13.
 
 **Tope: tres rondas.** Si a la tercera sigue en rojo, se para y se escala con
 el job, el error y lo que se intentó. Una rama nueva o una PR nueva para

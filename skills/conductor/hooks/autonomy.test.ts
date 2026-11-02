@@ -86,6 +86,10 @@ describe('anchorText', () => {
     expect(text).toContain('algo grave en el back')
   })
 
+  test('an announced ticket is checked into In Review before cleanup', () => {
+    expect(anchorText(summarize(rows, NOW), NOW)).toContain('si no está en `In Review`')
+  })
+
   test('names the session handle when it is known', () => {
     const text = anchorText(summarize(rows, NOW), NOW, 'term_now')
     expect(text).toContain('tu handle en esta sesión es `term_now`')
@@ -105,6 +109,17 @@ describe('bashGuard', () => {
 
   test('lets check --wait with --types run', () => {
     expect(bashGuard('orca-ide orchestration check --terminal t --wait --types worker_done', rows)).toBe(null)
+  })
+
+  test('what it types into a child carries the mark, or the child relays it as the person\'s', () => {
+    expect(bashGuard('orca-ide terminal send --terminal term_h --text "seguí con el QA" --enter --json', rows)).toContain('[conductor]')
+    expect(bashGuard(`orca-ide terminal send --terminal term_h --text "$(cat /tmp/m.txt)" --enter`, rows)).toContain('[conductor]')
+    expect(bashGuard('orca-ide terminal send --terminal term_h --text "[conductor] seguí" --enter --json', rows)).toBe(null)
+    expect(bashGuard(`orca-ide terminal send --terminal term_h --text '[conductor] seguí' --enter`, rows)).toBe(null)
+    expect(bashGuard('orca-ide terminal send --terminal term_h --text "/model sonnet" --enter --json', rows)).toBe(null)
+    expect(bashGuard(`orca-ide terminal send --terminal term_h --text $'\\x02'`, rows)).toBe(null)
+    expect(bashGuard('orca-ide terminal send --terminal term_h --text "1" --enter', rows)).toBe(null)
+    expect(bashGuard('orca-ide terminal read --terminal term_h --json', rows)).toBe(null)
   })
 
   test('judges each part of a compound command', () => {

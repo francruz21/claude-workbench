@@ -142,6 +142,20 @@ Si un envío falla: dejar ese PR sin label, seguir con el resto, y reportar las
 fallas al final. Nunca declarar éxito sin la tabla de qué se posteó y qué se
 salteó, con el motivo.
 
+### El ticket queda en `In Review`
+
+Anunciado el ticket, se lee su estado en el tracker (en Linear, `get_issue` con
+`fields: ["status"]`). Si no está en `In Review` ni más adelante (`Done`,
+`Merged`), se mueve a `In Review` (`save_issue` con `state: "In Review"`) y se
+reporta en la misma línea del anuncio. Sin pedir OK: es el paso de estado del
+flujo, el mismo que hace el hijo al abrir la PR.
+
+No alcanza con que el hijo lo haya movido al abrir la PR. Una PR que vuelve a
+draft (`gh pr ready --undo`) o una retoma devuelve el ticket a `In Progress`
+—lo hace la integración de GitHub con el tracker, sin ningún agente—, y nadie lo
+vuelve a subir. Esto pasó: EDW-1101 se anunció y quedó tres días en
+`In Progress`.
+
 Si la label no existe en el repo:
 
 ```bash

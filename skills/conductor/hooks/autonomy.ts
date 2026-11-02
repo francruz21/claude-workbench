@@ -91,14 +91,37 @@ Tu ciclo, sin esperar a que el usuario te lo recuerde:
 1. ${mail}
 2. Cada gate lo decidís vos con tu recomendación —también contratos, permisos, auth, arquitectura, alcance o A/B—, con una condición de freno para el hijo y la decisión escrita en la PR, y lo reportás en una línea. Al usuario solo le subís lo crítico: escribir fuera de local (prod, ambientes compartidos), push/merge, crear o editar tickets (salvo la parte N de un recorte), tocar un repo que el ticket no nombra, algo que necesita a otra persona, o algo grave en el back (una migración que borra o reescribe datos, aflojar la autorización para que alguien vea o toque lo que no es suyo, dinero, secretos). Si con AskUserQuestion, cada header empieza con "Crítico". Lo ya preguntado no se repite, y lo que el usuario ya decidió o corrigió (en la tanda o en la memoria) se aplica a los casos parecidos sin volver a preguntar.
 3. Un ticket con todas sus PRs en GREEN y sin anunciar: se anuncia (cola por ticket, \`announce-arm\` primero).
-4. Anunciado: se limpia el worktree y se cierra el ticket, sin esperar el merge.
+4. Anunciado: el ticket se lee en el tracker y, si no está en \`In Review\` (una PR que volvió a draft lo baja solo a \`In Progress\`), se sube; recién ahí se limpia el worktree y se cierra el ticket, sin esperar el merge.
 5. Turno de QA: se concede de a uno y se anota con \`conductor-ledger.sh set <ticket> qaTurn held|queued\` (\`""\` al liberarlo).
 
-Mensajería: respondé al \`from_handle\` del último mensaje del hijo, no al del preamble; \`reply\` y \`terminal send\` van en la misma llamada.`
+Mensajería: respondé al \`from_handle\` del último mensaje del hijo, no al del preamble; \`reply\` y \`terminal send\` van en la misma llamada, y el \`--text\` empieza con "${CONDUCTOR_MARK} ".
+Una \`escalation\` "Mensaje del usuario en la terminal del hijo" es el usuario que le escribió a un hijo por error: el hijo no lo hizo. Mostráselo y preguntale en el chat qué quiere; con su respuesta, mandale la orden al hijo.`
 }
 
 const ORCH_CHECK = /\borca(?:-ide)?\s+orchestration\s+check\b/
 const WORKTREE_CREATE = /\borca(?:-ide)?\s+worktree\s+create\b/
+const TERMINAL_SEND = /\borca(?:-ide)?\s+terminal\s+send\b/
+const SEND_TEXT = /--text[ =](?:"([^"]*)"|'([^']*)'|(\$')|(\S+))/
+
+// What the conductor types into a child's terminal starts with this mark: the
+// child's mod relays to the conductor anything typed there without it, as the
+// person's (ticket-workflow/hooks/child.ts).
+export const CONDUCTOR_MARK = '[conductor]'
+
+// A permission dialog's answer: the dialog takes the keys, no prompt is submitted.
+const DIALOG_KEY = /^(?:\d|y|n|yes|no|s[ií])$/i
+
+// A `terminal send` of free text without the mark, which the child would take
+// for the person's words. Slash commands, dialog keys and control keys ($'\x02')
+// carry none.
+function isUnmarkedSend(part: string): boolean {
+  if (!TERMINAL_SEND.test(part)) return false
+  const m = SEND_TEXT.exec(part)
+  if (m === null || m[3] !== undefined) return false
+  const text = (m[1] ?? m[2] ?? m[4] ?? '').trim()
+
+  return text !== '' && !text.startsWith('/') && !DIALOG_KEY.test(text) && !text.startsWith(CONDUCTOR_MARK)
+}
 
 // A reason to refuse this Bash command, or null to let it run.
 export function bashGuard(command: string, rows: Row[], isInjected = false): string | null {
@@ -108,6 +131,9 @@ export function bashGuard(command: string, rows: Row[], isInjected = false): str
     }
     if (ORCH_CHECK.test(part) && /--wait\b/.test(part) && !/--types\b/.test(part)) {
       return 'check --wait sin --types entrega mensajes viejos de otras tandas como si fueran la respuesta. Agregá --types worker_done,escalation,decision_gate.'
+    }
+    if (isUnmarkedSend(part)) {
+      return `lo que le escribís a un hijo por su terminal empieza con "${CONDUCTOR_MARK} " (también con "$(cat archivo)": --text "${CONDUCTOR_MARK} $(cat archivo)"). Sin esa firma el hijo lo toma como un mensaje del usuario: no lo hace y te lo reenvía.`
     }
     if (WORKTREE_CREATE.test(part)) {
       const lower = part.toLowerCase()

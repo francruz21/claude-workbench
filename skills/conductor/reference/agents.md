@@ -384,7 +384,7 @@ el estado sale de Orca (`terminal list`: `connected`, `orphaned`,
 | trabajando | spinner en el título | nada |
 | esperando | quieto con un stack o monitor corriendo ("1 shell, 1 monitor"), su turno de QA en cola, o ya entregó (PR abierta) | nada: es una espera válida |
 | te espera | un `orchestration ask` corriendo hace más de 5 min | contestarle **ya**: el que lo frena sos vos |
-| parado | quieto, sin nada corriendo, sin `ask` y sin turno en cola | escribirle que siga (`terminal send`); si no arranca, leer su terminal y destrabarlo |
+| parado | quieto, sin nada corriendo, sin `ask` y sin turno en cola | escribirle que siga (`terminal send`, con el texto empezando en `[conductor] `); si no arranca, leer su terminal y destrabarlo |
 | trabado | un prompt de permiso en pantalla | leerlo y destrabarlo: si es algo que podés autorizar, autorizalo |
 | muerto | terminal ausente, huérfana o desconectada | retomarlo ya (*Reconciliar una tanda*), con un hijo nuevo y el spec de retoma |
 
