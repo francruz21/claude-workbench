@@ -146,7 +146,7 @@ export function bashGuard(command: string, rows: Row[], isInjected = false, self
     }
     if (WORKTREE_CREATE.test(part)) {
       const lower = part.toLowerCase()
-      // The id as a whole token: EDW-80 must not match edw-802.
+      // The id as a whole token: TCK-80 must not match tck-802.
       const taken = rows.find(row => {
         const id = row.id.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
