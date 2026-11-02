@@ -5,26 +5,36 @@ import type { GitState } from '../types'
 import {
   AGENT_DENIED,
   ASK_USER_DENIED,
+  FOREIGN_SUBJECT,
   RELAY_SUBJECT,
   anchorText,
   askContext,
   bashGuard,
   coordinatorOf,
+  foreignBody,
+  foreignContext,
+  injectedText,
   isAsk,
   isDispatched,
   isFromConductor,
+  isHandoff,
   isWorkBranch,
   latestForMe,
+  liveHandles,
   ownHandle,
   parseGitStatus,
+  parseInjected,
   parseMessages,
   relayBody,
   relayDropText,
   repoLine,
+  signerOf,
+  splitBySender,
   submodulePaths,
   unreadForMe,
   wakeText,
 } from './child'
+import type { Message } from '../types'
 
 const INBOX_MS = 60_000
 
@@ -59,9 +69,13 @@ async function identify($: EngineInterface): Promise<void> {
   const me = ownHandle((await orca($, 'terminal', 'list')) ?? '', paneKey)
   await update($, handle, () => me)
   if (me === null) return
-  const isMine = isDispatched((await orca($, 'orchestration', 'task-list')) ?? '', me)
-  await update($, dispatched, () => isMine)
+  const tasks = (await orca($, 'orchestration', 'task-list')) ?? ''
+  await update($, dispatched, () => isDispatched(tasks, me))
+  // The superior is whoever dispatched the live task, never whoever wrote last.
+  if ((await read($, conductor)) === null) await update($, conductor, () => coordinatorOf(tasks, me))
 }
+
+const INBOX_CHECK = /\borca(?:-ide)?\s+orchestration\s+(?:check|inbox)\b/
 
 // The worktree's repos on a work branch: the root and each submodule.
 async function refreshGit($: EngineInterface): Promise<void> {
@@ -99,23 +113,70 @@ async function arm($: EngineInterface, on: boolean): Promise<void> {
   }
 }
 
+// Until prompt.compose is seen running, the anchor rides on each prompt as context.
+async function anchored<E extends { context?: string[] }>($: EngineInterface, e: E): Promise<E> {
+  if (await read($, isComposed)) return e
+  const text = anchorText(await read($, handle), await read($, repos), await read($, conductor))
+
+  return { ...e, context: [...(e.context ?? []), text] }
+}
+
 const isChild = async ($: EngineInterface) => (await read($, isArmed)) && (await read($, dispatched))
 
 // The person's own gesture: typed at this terminal, or through Remote Control.
 const isTyped = (origin: { kind: string } | undefined) => origin?.kind === 'composer' || origin?.kind === 'bridge'
 
-// The person wrote to the child: the child does not act on it. The message goes
-// to the conductor, who asks the person, and the prompt never reaches the model.
-async function relay($: EngineInterface, text: string): Promise<{ drop: string }> {
+async function superiorOf($: EngineInterface): Promise<string | null> {
+  if ((await read($, conductor)) === null) await identify($)
+
+  return read($, conductor)
+}
+
+// Anything not from the conductor reaches the conductor instead of the model:
+// the conductor decides whether it becomes an order, and the child never acts on it.
+async function relay($: EngineInterface, subject: string, body: string): Promise<{ to: string | null; isSent: boolean }> {
   const me = await read($, handle)
-  let to = await read($, conductor)
-  if (to === null && me !== null) to = coordinatorOf((await orca($, 'orchestration', 'task-list')) ?? '', me)
+  const to = await superiorOf($)
   const isSent =
     me !== null &&
     to !== null &&
-    (await orca($, 'orchestration', 'send', '--to', to, '--from', me, '--type', 'escalation', '--subject', RELAY_SUBJECT, '--body', relayBody(text, me))) !== null
+    (await orca($, 'orchestration', 'send', '--to', to, '--from', me, '--type', 'escalation', '--subject', subject, '--body', body)) !== null
 
-  return { drop: relayDropText(to, isSent) }
+  return { to, isSent }
+}
+
+async function relayPerson($: EngineInterface, text: string): Promise<{ drop: string }> {
+  const signer = signerOf(text)
+  const me = await read($, handle)
+  // A mark with someone else's handle is another conductor, not the person.
+  const sent = signer
+    ? await relay($, FOREIGN_SUBJECT, foreignBody(text, signer, me))
+    : await relay($, RELAY_SUBJECT, relayBody(text, me))
+
+  return { drop: relayDropText(sent.to, sent.isSent) }
+}
+
+// A rotated conductor's successor takes over only once the old one's terminal is gone:
+// a second conductor running in parallel cannot claim a live conductor's child.
+async function acceptHandoff($: EngineInterface, message: Message): Promise<boolean> {
+  const superior = await read($, conductor)
+  if (!isHandoff(message) || message.from_handle === superior) return false
+  if (superior !== null && liveHandles((await orca($, 'terminal', 'list')) ?? '').has(superior)) return false
+  await update($, conductor, () => message.from_handle)
+
+  return true
+}
+
+// Splits the unread mail: the conductor's (and an accepted handoff) wakes the
+// child; the rest goes to the conductor once, and is marked as handled.
+async function sortMail($: EngineInterface, unread: Message[]): Promise<{ mine: Message[]; foreign: Message[] }> {
+  const me = await read($, handle)
+  for (const m of unread) if (isHandoff(m)) await acceptHandoff($, m)
+  const { mine, foreign } = splitBySender(unread, await superiorOf($))
+  for (const m of foreign) await relay($, FOREIGN_SUBJECT, foreignBody(`${m.subject ?? m.type}\n\n${m.body ?? ''}`, m.from_handle, me))
+  if (foreign.length > 0) await update($, woken, list => [...list, ...foreign.map(m => m.id)].slice(-500))
+
+  return { mine, foreign }
 }
 
 // Wakes the child when the conductor wrote to it and it did not read it: the
@@ -126,15 +187,12 @@ async function poll($: EngineInterface): Promise<void> {
   const me = await read($, handle)
   if (me === null || !(await read($, dispatched))) return
 
-  const messages = await inbox($, me)
-  const latest = latestForMe(messages, me)
-  if (latest) await update($, conductor, () => latest.from_handle)
-
   const seen = new Set(await read($, woken))
-  const unread = unreadForMe(messages, me).filter(m => !seen.has(m.id))
-  const text = wakeText(unread)
+  const unread = unreadForMe(await inbox($, me), me).filter(m => !seen.has(m.id))
+  const { mine } = await sortMail($, unread)
+  const text = wakeText(mine)
   if (text === null) return
-  await update($, woken, list => [...list, ...unread.map(m => m.id)].slice(-500))
+  await update($, woken, list => [...list, ...mine.map(m => m.id)].slice(-500))
   await $.prompt.submit({ text })
 }
 
@@ -196,11 +254,21 @@ export const register: Register = on => {
   // Until compose is seen running, the anchor rides on each prompt as context.
   on('prompt.submit', async ($, e, next) => {
     if (e.command !== undefined || !(await isChild($))) return next(e)
-    if (isTyped(e.origin) && !isFromConductor(e.text)) return relay($, e.text)
-    if (await read($, isComposed)) return next(e)
-    const text = anchorText(await read($, handle), await read($, repos), await read($, conductor))
+    const block = parseInjected(e.text)
+    if (block !== null) {
+      // Orca's injected mail: only the conductor's messages reach the model.
+      const superior = await superiorOf($)
+      const me = await read($, handle)
+      const foreign = block.filter(m => m.handle !== superior)
+      for (const m of foreign) await relay($, FOREIGN_SUBJECT, foreignBody(m.lines.join('\n'), m.handle, me))
+      const kept = block.filter(m => m.handle === superior)
+      if (kept.length === 0) return { drop: `ticket-workflow: ${foreign.length} mensaje(s) de otros agentes, pasados al conductor sin ejecutar.` }
+      if (foreign.length > 0) return next(await anchored($, { ...e, text: injectedText(kept) }))
+    } else if (isTyped(e.origin) && !isFromConductor(e.text, await superiorOf($))) {
+      return relayPerson($, e.text)
+    }
 
-    return next({ ...e, context: [...(e.context ?? []), text] })
+    return next(await anchored($, e))
   }).catch(($, e, next) => next(e))
 
   // The guards are a reminder, not a lock: if one fails, the call goes on.
@@ -211,13 +279,24 @@ export const register: Register = on => {
 
     const ran = await next(e)
     const me = await read($, handle)
-    if (!isAsk(e.command) || me === null || ran.deny !== undefined) return ran
+    if (me === null || ran.deny !== undefined) return ran
+
+    if (INBOX_CHECK.test(e.command)) {
+      // The model reads the mail itself: what is not from the conductor is flagged, and relayed once.
+      const seen = new Set(await read($, woken))
+      const unread = unreadForMe(await inbox($, me), me).filter(m => !seen.has(m.id))
+      const { foreign } = await sortMail($, unread)
+      if (foreign.length === 0) return ran
+      const who = [...new Set(foreign.map(m => m.from_handle))].join(', ')
+
+      return { ...ran, context: [...(ran.context ?? []), foreignContext(who)] }
+    }
+    if (!isAsk(e.command)) return ran
 
     // `ask` may print only the tail of the answer: hand the model the whole body.
-    const latest = latestForMe(await inbox($, me), me)
+    const latest = latestForMe(await inbox($, me), me, await superiorOf($))
     if (latest === null || !latest.body) return ran
     await update($, woken, list => [...list, latest.id].slice(-500))
-    await update($, conductor, () => latest.from_handle)
 
     return { ...ran, context: [...(ran.context ?? []), askContext(latest)] }
   }).catch(($, e, next) => next(e))
@@ -225,7 +304,6 @@ export const register: Register = on => {
   on('tool.call', { tool: 'Agent' }, async ($, e, next) =>
     (await isChild($)) ? { deny: `ticket-workflow: ${AGENT_DENIED}` } : next(e),
   ).catch(($, e, next) => next(e))
-
   on('tool.call', { tool: 'AskUserQuestion' }, async ($, e, next) =>
     (await isChild($)) ? { deny: `ticket-workflow: ${ASK_USER_DENIED}` } : next(e),
   ).catch(($, e, next) => next(e))

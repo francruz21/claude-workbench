@@ -105,7 +105,7 @@ async function checkChildren($: EngineInterface, open: Row[], now: number): Prom
     if (verdict.kind === 'stalled') {
       if (nudges.count < MAX_CHILD_NUDGES && now - nudges.at >= NUDGE_EVERY_MS) {
         try {
-          await $.process.run(['orca-ide', 'terminal', 'send', '--terminal', handleOf, '--text', nudgeText(row), '--enter', '--json'])
+          await $.process.run(['orca-ide', 'terminal', 'send', '--terminal', handleOf, '--text', nudgeText(row, await read($, handle)), '--enter', '--json'])
           await update($, childNudges, map => ({ ...map, [handleOf]: { count: nudges.count + 1, at: now } }))
           $.ui.toast(`${row.name}: estaba parado, le dije que siga (${nudges.count + 1}/${MAX_CHILD_NUDGES}).`, { timeoutMs: 8000 })
         } catch {
@@ -377,7 +377,7 @@ export const register: Register = on => {
   // The guards are a reminder, not a lock: if one fails, the call goes on.
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
     if (!(await read($, isArmed))) return next(e)
-    const reason = bashGuard(e.command, await read($, rows), await read($, isInjected)) ?? dispatchGuard(e.command, await read($, routing), await read($, modelSentTo))
+    const reason = bashGuard(e.command, await read($, rows), await read($, isInjected), await read($, handle)) ?? dispatchGuard(e.command, await read($, routing), await read($, modelSentTo))
     if (reason !== null) return { deny: `conductor: ${reason}` }
     const result = await next(e)
     const sent = modelsSent(e.command)
