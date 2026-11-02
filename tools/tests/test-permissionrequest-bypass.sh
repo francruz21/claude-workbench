@@ -29,7 +29,7 @@ rm_cmd() { jq -nc --arg c "$1" '{tool_input: {command: $c}}' | python3 "$RMGATE"
 
 # shellcheck disable=SC2016 # los $ son literales: es el comando que ve el hook
 for c in 'rm -rf node_modules' 'rm -rf /tmp/x/y' 'cd a && rm -rf ./dist' \
-         "rm -rf $HOME/Documentos/wt/edw-1-x" 'rm -rf $HOME/.cache/foo' 'rm -f /etc/hosts'; do
+         "rm -rf $HOME/Documentos/wt/tck-1-x" 'rm -rf $HOME/.cache/foo' 'rm -f /etc/hosts'; do
   assert_exit 0 "pasa: $c" rm_cmd "$c"
 done
 # shellcheck disable=SC2016
