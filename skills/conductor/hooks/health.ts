@@ -4,6 +4,7 @@
 // register runs the Orca calls and acts on them.
 
 import type { Row } from '../types'
+import { markOf } from './autonomy'
 
 export type Terminal = {
   handle: string
@@ -122,9 +123,9 @@ export function healthLabel(health: Health): string {
 }
 
 // What the mod types into a stalled child. A standing order, not a question.
-export function nudgeText(row: Row): string {
+export function nudgeText(row: Row, self: string | null): string {
   return [
-    `[conductor] ${row.name}: seguí con el ticket hasta entregarlo (PR publicada y worker_done). No te detengas.`,
+    `${self !== null ? markOf(self) : '[conductor]'} ${row.name}: seguí con el ticket hasta entregarlo (PR publicada y worker_done). No te detengas.`,
     'Lo menor lo decidís vos con tu recomendación y lo dejás escrito en la PR. Si necesitás un permiso, tu turno de QA o un dato que solo tengo yo, pedilo con `orchestration ask` y mientras seguí con lo que no dependa de eso.',
     'Esperar solo vale para tu turno de QA o un stack que está levantando, con su monitor armado.',
   ].join(' ')

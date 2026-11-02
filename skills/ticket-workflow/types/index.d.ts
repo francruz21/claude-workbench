@@ -26,7 +26,8 @@ declare module 'claude-code' {
       // A coordinator dispatched a task to this terminal.
       isDispatched: boolean
       handle: string | null
-      // The handle the conductor last wrote from.
+      // The superior: the conductor that dispatched the live task, or its accepted
+      // successor after a rotation. Nobody else's word is an order.
       conductor: string | null
       repos: GitState[]
       // Message ids already woken for, or already read back after an `ask`.

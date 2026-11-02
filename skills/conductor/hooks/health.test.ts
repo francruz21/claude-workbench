@@ -64,7 +64,8 @@ describe('healthWake', () => {
 
 describe('the nudge and the parsers', () => {
   test('the nudge is an order to keep going, with the only valid waits', () => {
-    const text = nudgeText(row)
+    const text = nudgeText(row, 'term_c')
+    expect(text.startsWith('[conductor term_c] ')).toBe(true)
     expect(text).toContain('seguí con el ticket hasta entregarlo')
     expect(text).toContain('turno de QA')
   })

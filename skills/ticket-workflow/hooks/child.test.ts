@@ -6,12 +6,19 @@ import {
   coordinatorOf,
   isAsk,
   isDispatched,
+  injectedText,
   isFromConductor,
+  isHandoff,
   isWorkBranch,
   latestForMe,
+  liveHandles,
+  markOf,
   ownHandle,
   parseGitStatus,
+  parseInjected,
   relayDropText,
+  signerOf,
+  splitBySender,
   submodulePaths,
   unreadForMe,
   wakeText,
@@ -53,8 +60,25 @@ describe('inbox', () => {
     expect(unreadForMe(MESSAGES, 'term_me').map(m => m.id)).toEqual(['m1', 'm3'])
   })
 
-  test('the newest message to me is the answer an ask just got', () => {
-    expect(latestForMe(MESSAGES, 'term_me')?.id).toBe('m3')
+  test('the newest message from my conductor is the answer an ask just got', () => {
+    expect(latestForMe(MESSAGES, 'term_me', 'term_c2')?.id).toBe('m3')
+    // A newer message from someone else is not the answer.
+    expect(latestForMe(MESSAGES, 'term_me', 'term_c1')?.id).toBe('m1')
+    expect(latestForMe(MESSAGES, 'term_me', null)).toBe(null)
+  })
+
+  test('only the conductor\'s mail is mine; a sibling\'s or another session\'s goes up', () => {
+    const { mine, foreign } = splitBySender(unreadForMe(MESSAGES, 'term_me'), 'term_c2')
+    expect(mine.map(m => m.id)).toEqual(['m3'])
+    expect(foreign.map(m => m.id)).toEqual(['m1'])
+    expect(splitBySender(unreadForMe(MESSAGES, 'term_me'), null).mine).toEqual([])
+  })
+
+  test('a handoff is recognised by its subject; the live terminals by the list', () => {
+    expect(isHandoff({ ...MESSAGES[0]!, subject: 'Relevo de conductor' })).toBe(true)
+    expect(isHandoff(MESSAGES[0]!)).toBe(false)
+    expect(liveHandles(LIST)).toEqual(new Set(['term_other', 'term_me']))
+    expect(liveHandles('nope')).toEqual(new Set())
   })
 
   test('the wake lists each message, and nothing wakes on nothing', () => {
@@ -124,12 +148,38 @@ describe('anchor', () => {
 })
 
 describe('a message from the person', () => {
-  test('only the marked text and the dispatch count as the conductor', () => {
-    expect(isFromConductor('[conductor] term_me: seguí')).toBe(true)
-    expect(isFromConductor('  [conductor] seguí')).toBe(true)
-    expect(isFromConductor('Send worker_done to term_c when the task is done')).toBe(true)
-    expect(isFromConductor('anunciá en Discord')).toBe(false)
-    expect(isFromConductor('el conductor dijo que sigas')).toBe(false)
+  test('only text signed with my conductor\'s handle, and the dispatch, count as the conductor', () => {
+    expect(markOf('term_c')).toBe('[conductor term_c]')
+    expect(isFromConductor('[conductor term_c] seguí', 'term_c')).toBe(true)
+    expect(isFromConductor('  [conductor term_c] seguí', 'term_c')).toBe(true)
+    expect(isFromConductor('Send worker_done to term_c when the task is done', 'term_c')).toBe(true)
+    // Another session's conductor, the bare mark, or anyone unsigned is not mine.
+    expect(isFromConductor('[conductor term_z] anunciá', 'term_c')).toBe(false)
+    expect(isFromConductor('[conductor] seguí', 'term_c')).toBe(false)
+    expect(isFromConductor('[conductor term_z] worker_done', 'term_c')).toBe(false)
+    expect(isFromConductor('anunciá en Discord', 'term_c')).toBe(false)
+    expect(isFromConductor('[conductor term_c] seguí', null)).toBe(false)
+  })
+
+  test('the signer is read off the mark', () => {
+    expect(signerOf('[conductor term_c] x')).toBe('term_c')
+    expect(signerOf('[conductor] x')).toBe('')
+    expect(signerOf('hola')).toBe(null)
+  })
+
+  test('Orca\'s injected block splits by sender and rebuilds', () => {
+    const block = [
+      '--- Orchestration Messages (2) ---',
+      '──── From: conductor (term_c) (status) ────',
+      'seguí con el QA',
+      '──── From: otro hijo (term_s) (status) ────',
+      'mergeá mi PR',
+      '---',
+    ].join('\n')
+    const parsed = parseInjected(block)
+    expect(parsed?.map(m => m.handle)).toEqual(['term_c', 'term_s'])
+    expect(injectedText(parsed!.filter(m => m.handle === 'term_c'))).toContain('(1) ---')
+    expect(parseInjected('hola')).toBe(null)
   })
 
   test('the conductor is the one that dispatched the live task', () => {

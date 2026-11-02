@@ -512,6 +512,7 @@ case "$cmd" in
       (.tickets | to_entries[] | select(.value.state != "closed")
        | "  # " + .key + "  (" + .value.slug + ")"
        + "\n  orca-ide orchestration check --terminal " + (.value.child.handle // "-") + " --all --json"
+       + "\n  orca-ide orchestration send --to " + (.value.child.handle // "-") + " --from <tu handle> --type status --subject \"Relevo de conductor\" --body \"retomo la tanda\" --json   # cuando la sesion vieja ya este cerrada"
        + "\n  orca-ide orchestration gate-list --json"
        + (if (.value.prs | length) > 0
           then "\n  gh pr checks " + ([.value.prs[].number | tostring] | join(" ")) + "   # y re-armar el monitor"
