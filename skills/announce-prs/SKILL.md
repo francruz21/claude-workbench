@@ -153,7 +153,7 @@ flujo, el mismo que hace el hijo al abrir la PR.
 No alcanza con que el hijo lo haya movido al abrir la PR. Una PR que vuelve a
 draft (`gh pr ready --undo`) o una retoma devuelve el ticket a `In Progress`
 —lo hace la integración de GitHub con el tracker, sin ningún agente—, y nadie lo
-vuelve a subir. Esto pasó: EDW-1101 se anunció y quedó tres días en
+vuelve a subir. Esto pasó: un ticket se anunció y quedó tres días en
 `In Progress`.
 
 Si la label no existe en el repo:

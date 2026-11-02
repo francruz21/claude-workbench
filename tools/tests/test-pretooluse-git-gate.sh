@@ -23,8 +23,8 @@ allows() {
 echo "git push en todas sus formas"
 denies 'git push'
 denies 'git push origin dev'
-denies 'git push -u origin HEAD:feat/EDW-1-x'
-denies 'git -C talentia-front push origin stage'
+denies 'git push -u origin HEAD:feat/TCK-1-x'
+denies 'git -C app-front push origin stage'
 denies 'git -c core.x=1 push'
 denies 'git -c alias.p=push p origin dev'
 denies 'cd repo && git push --force'
@@ -50,7 +50,7 @@ denies 'curl -X PUT -H "Authorization: token x" https://api.github.com/repos/o/r
 denies 'curl -d "{}" https://api.github.com/repos/o/r/merges'
 
 echo "lo que tiene que pasar"
-allows "$HOME/claude-workbench/tools/publish-branch.sh -C talentia-front"
+allows "$HOME/claude-workbench/tools/publish-branch.sh -C app-front"
 allows 'git status'
 allows 'git stash push -m wip'
 allows 'git log --oneline | grep push'
@@ -58,7 +58,7 @@ allows 'git commit -m "no hacer git push a dev"'
 allows "git commit -F - <<'EOF'
 fix: explica por que no se usa git push
 EOF"
-allows 'git ls-remote origin feat/EDW-1-x'
+allows 'git ls-remote origin feat/TCK-1-x'
 allows 'gh pr create --base dev --title x --body y'
 allows 'gh pr view 12 --json statusCheckRollup'
 allows 'gh pr review 12 --comment -b "ver linea 3"'
