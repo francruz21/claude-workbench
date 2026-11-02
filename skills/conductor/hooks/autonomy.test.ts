@@ -86,6 +86,10 @@ describe('anchorText', () => {
     expect(text).toContain('algo grave en el back')
   })
 
+  test('an announced ticket is checked into In Review before cleanup', () => {
+    expect(anchorText(summarize(rows, NOW), NOW)).toContain('si no está en `In Review`')
+  })
+
   test('names the session handle when it is known', () => {
     const text = anchorText(summarize(rows, NOW), NOW, 'term_now')
     expect(text).toContain('tu handle en esta sesión es `term_now`')

@@ -146,6 +146,7 @@ Lo que no cambia aunque se compacte la conversación:
 - La salida de \`ask\` puede llegar cortada: después de cada \`ask\` leé la respuesta entera (el mod te la agrega, y si no, \`inbox\`).
 - El heartbeat va con \`run_in_background\`: en foreground traba tu shell y no te llegan las respuestas.
 - No delegás: ni subagentes ni otros worktrees. Tu mundo es este worktree.
+- Las skills sí: las de la tabla del \`CLAUDE.md\` del repo (dominio, depurar, test, verificar) se invocan con \`Skill\` en su paso. Si una pide un subagente, ese paso lo hacés vos acá.
 - QA en el navegador de Orca, pidiendo el turno antes de levantar el stack. Sin OK del QA no se commitea.`
 }
 
@@ -163,7 +164,8 @@ export function bashGuard(command: string, isBackground: boolean): string | null
   return null
 }
 
-export const AGENT_DENIED = 'sos un hijo: no delegás en subagentes. Todo lo de este ticket lo hacés vos, acá.'
+export const AGENT_DENIED =
+  'sos un hijo: no delegás en subagentes. Todo lo de este ticket lo hacés vos, acá. Si una skill te pidió este subagente, seguí la skill y hacé ese paso vos, inline.'
 export const ASK_USER_DENIED =
   'sos un hijo: al usuario no le hablás. Preguntale al conductor con `orca-ide orchestration ask`.'
 

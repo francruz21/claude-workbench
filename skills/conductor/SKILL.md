@@ -872,6 +872,11 @@ mensaje y etiquetar en el mismo paso deja el PR marcado como anunciado cuando el
 mensaje no llegó — el ticket queda invisible para la próxima pasada y nadie lo
 anuncia nunca.
 
+Y **anunciado no es cerrado hasta que el ticket está en `In Review`**. Se lee el
+estado en el tracker y, si quedó en `In Progress` (una PR que volvió a draft o
+una retoma lo bajan solos), se sube a `In Review` antes de limpiar el worktree.
+El detalle está en `announce-prs`, paso 5.
+
 ### El anuncio pasa por un hook, no por la memoria
 
 Estas reglas ya estaban escritas y se violaron igual, porque una regla en prosa
@@ -996,6 +1001,7 @@ conductor es la mitad del trabajo hecha.
 - [ ] El anuncio salió solo, sin pedirle OK al usuario, y con el alcance acotado a ese ticket.
 - [ ] Se verificó que la mención quedó resuelta antes de enviar.
 - [ ] La label de anunciado se puso **después** del envío exitoso, y el envío se verificó en el canal antes de etiquetar.
+- [ ] Cada ticket anunciado se leyó en el tracker y quedó en `In Review` (o más adelante) antes de limpiarlo; ninguno quedó anunciado en `In Progress`.
 - [ ] Ninguna hora pedida por el usuario se tomó como autorización para anunciar con el gate sin terminar.
 - [ ] El envío pasó por `announce-arm`, que verificó el gate en vivo contra GitHub, no por el `pr-gate` anotado.
 - [ ] Ningún comando se reescribió para esquivar el hook: lo que denegó se resolvió haciendo lo que el motivo pedía.

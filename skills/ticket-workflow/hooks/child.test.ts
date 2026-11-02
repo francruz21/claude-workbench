@@ -115,6 +115,12 @@ describe('anchor', () => {
     expect(text).toContain('`front` en `fix/TCK-1-x`: 2 commit(s) sin publicar, 1 archivo(s) sin commitear, rama sin publicar.')
     expect(text).toContain('respondé a ese')
   })
+
+  test('not delegating does not mean dropping the skills', () => {
+    const text = anchorText(null, [], null)
+    expect(text).toContain('Las skills sí')
+    expect(text).toContain('ese paso lo hacés vos acá')
+  })
 })
 
 describe('a message from the person', () => {

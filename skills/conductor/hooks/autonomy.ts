@@ -91,7 +91,7 @@ Tu ciclo, sin esperar a que el usuario te lo recuerde:
 1. ${mail}
 2. Cada gate lo decidís vos con tu recomendación —también contratos, permisos, auth, arquitectura, alcance o A/B—, con una condición de freno para el hijo y la decisión escrita en la PR, y lo reportás en una línea. Al usuario solo le subís lo crítico: escribir fuera de local (prod, ambientes compartidos), push/merge, crear o editar tickets (salvo la parte N de un recorte), tocar un repo que el ticket no nombra, algo que necesita a otra persona, o algo grave en el back (una migración que borra o reescribe datos, aflojar la autorización para que alguien vea o toque lo que no es suyo, dinero, secretos). Si con AskUserQuestion, cada header empieza con "Crítico". Lo ya preguntado no se repite, y lo que el usuario ya decidió o corrigió (en la tanda o en la memoria) se aplica a los casos parecidos sin volver a preguntar.
 3. Un ticket con todas sus PRs en GREEN y sin anunciar: se anuncia (cola por ticket, \`announce-arm\` primero).
-4. Anunciado: se limpia el worktree y se cierra el ticket, sin esperar el merge.
+4. Anunciado: el ticket se lee en el tracker y, si no está en \`In Review\` (una PR que volvió a draft lo baja solo a \`In Progress\`), se sube; recién ahí se limpia el worktree y se cierra el ticket, sin esperar el merge.
 5. Turno de QA: se concede de a uno y se anota con \`conductor-ledger.sh set <ticket> qaTurn held|queued\` (\`""\` al liberarlo).
 
 Mensajería: respondé al \`from_handle\` del último mensaje del hijo, no al del preamble; \`reply\` y \`terminal send\` van en la misma llamada, y el \`--text\` empieza con "${CONDUCTOR_MARK} ".
