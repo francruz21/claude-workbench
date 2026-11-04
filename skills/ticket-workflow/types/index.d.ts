@@ -21,8 +21,15 @@ export type GitState = {
 declare module 'claude-code' {
   interface PluginState {
     'ticket-workflow': {
-      // This session runs ticket-workflow: it loaded the skill, or `/hijo on`.
+      // This session is a dispatched child: a coordinator dispatched it a task,
+      // it loaded ticket-workflow, or `/hijo on`.
       isArmed: boolean
+      // It runs ticket-workflow (the gates apply), not only a dispatched task such as a QA.
+      isTicket: boolean
+      // Skills it loads before any other tool: `choices.childSkills` plus the spec's `Skills:` line.
+      requiredSkills: string[]
+      // Skills it invoked, attempted or not.
+      loadedSkills: string[]
       // A coordinator dispatched a task to this terminal.
       isDispatched: boolean
       handle: string | null

@@ -3,21 +3,28 @@ import { describe, expect, test } from 'claude-code/testing'
 import {
   anchorText,
   bashGuard,
+  configuredSkills,
   coordinatorOf,
   isAsk,
   isDispatched,
   injectedText,
   isFromConductor,
   isHandoff,
+  isMine,
   isWorkBranch,
   latestForMe,
   liveHandles,
   markOf,
+  missingSkills,
+  openTasks,
   ownHandle,
+  parseDispatch,
+  parseDispatchPreamble,
   parseGitStatus,
   parseInjected,
   relayDropText,
   signerOf,
+  specSkills,
   splitBySender,
   submodulePaths,
   unreadForMe,
@@ -142,8 +149,15 @@ describe('anchor', () => {
 
   test('not delegating does not mean dropping the skills', () => {
     const text = anchorText(null, [], null)
-    expect(text).toContain('Las skills sí')
+    expect(text).toContain('se invocan con `Skill` en su paso')
     expect(text).toContain('ese paso lo hacés vos acá')
+  })
+
+  test('a QA child gets no ticket gates; the mandatory skills are listed', () => {
+    const qa = anchorText('term_me', [], 'term_c', { skills: ['orca-cli'] })
+    expect(qa).not.toContain('cinco gates')
+    expect(qa).toContain('`orca-cli`')
+    expect(anchorText('term_me', [], 'term_c', { isTicket: true })).toContain('cinco gates')
   })
 })
 
@@ -152,7 +166,10 @@ describe('a message from the person', () => {
     expect(markOf('term_c')).toBe('[conductor term_c]')
     expect(isFromConductor('[conductor term_c] seguí', 'term_c')).toBe(true)
     expect(isFromConductor('  [conductor term_c] seguí', 'term_c')).toBe(true)
-    expect(isFromConductor('Send worker_done to term_c when the task is done', 'term_c')).toBe(true)
+    expect(isFromConductor(preamble('term_c'), 'term_c')).toBe(true)
+    // A dispatch by another coordinator, or a bare mention of worker_done, is not mine.
+    expect(isFromConductor(preamble('term_z'), 'term_c')).toBe(false)
+    expect(isFromConductor('Send worker_done to term_c when the task is done', 'term_c')).toBe(false)
     // Another session's conductor, the bare mark, or anyone unsigned is not mine.
     expect(isFromConductor('[conductor term_z] anunciá', 'term_c')).toBe(false)
     expect(isFromConductor('[conductor] seguí', 'term_c')).toBe(false)
@@ -199,5 +216,51 @@ describe('a message from the person', () => {
   test('the person is told where the message went, or that it did not', () => {
     expect(relayDropText('term_c', true)).toContain('(term_c)')
     expect(relayDropText(null, false)).toContain('Escribíselo al conductor')
+  })
+})
+
+const preamble = (coordinator: string) =>
+  `You are working inside Orca, a multi-agent IDE. You are a dispatched worker.\nYour coordinator's terminal handle is: ${coordinator}\nYour task ID is: task_1\n\n# QA de TCK-1`
+
+describe('who dispatched me', () => {
+  test('the preamble names the coordinator and the task', () => {
+    expect(parseDispatchPreamble(preamble('term_c'))).toEqual({ coordinator: 'term_c', taskId: 'task_1' })
+    expect(parseDispatchPreamble('send worker_done to term_c')).toBeNull()
+  })
+
+  test('task-list has no assignee: the open tasks are looked up in their dispatch', () => {
+    const tasks = JSON.stringify({
+      result: {
+        tasks: [
+          { id: 'task_a', status: 'completed', created_by_terminal_handle: 'term_c' },
+          { id: 'task_b', status: 'dispatched', created_by_terminal_handle: 'term_c' },
+        ],
+      },
+    })
+    expect(openTasks(tasks)).toEqual([{ id: 'task_b', createdBy: 'term_c' }])
+    const shown = parseDispatch(
+      JSON.stringify({ result: { dispatch: { assignee_handle: 'term_me', assignee_pane_key: 'tab2:leafB', status: 'dispatched', dispatched_at: '2026-01-01 10:00:00' } } }),
+    )
+    expect(shown).toEqual({ assignee: 'term_me', paneKey: 'tab2:leafB', at: '2026-01-01 10:00:00' })
+    expect(isMine(shown!, null, 'tab2:leafB')).toBe(true)
+    expect(isMine(shown!, 'term_x', 'tab9:leafZ')).toBe(false)
+    expect(parseDispatch(JSON.stringify({ result: { dispatch: { assignee_handle: 'term_me', status: 'completed' } } }))).toBeNull()
+  })
+})
+
+describe('mandatory skills', () => {
+  test('from the capabilities file and from the spec', () => {
+    expect(configuredSkills(JSON.stringify({ choices: { childSkills: ['orca-cli', ' verification-before-completion ', 3] } }))).toEqual([
+      'orca-cli',
+      'verification-before-completion',
+    ])
+    expect(configuredSkills(null)).toEqual([])
+    expect(specSkills('# QA\nSkills: `app-payments`, orca-cli; rm -rf ~\nresto')).toEqual(['app-payments', 'orca-cli'])
+    expect(specSkills('- **Skills obligatorias:** app-authz')).toEqual(['app-authz'])
+    expect(specSkills('sin línea')).toEqual([])
+  })
+
+  test('a plugin prefix is the same skill', () => {
+    expect(missingSkills(['orca-cli', 'verification-before-completion'], ['superpowers:verification-before-completion'])).toEqual(['orca-cli'])
   })
 })

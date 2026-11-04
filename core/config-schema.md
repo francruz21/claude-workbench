@@ -58,7 +58,9 @@ probe podria pisar la respuesta que la persona ya dio.
 | `modelRouting.conductor` | string | modelo del conductor (alias de `/model` como `opus`, o un id completo); obligatorio con `enabled` |
 | `modelRouting.child` | string | modelo del hijo que implementa un ticket acotado; obligatorio con `enabled` |
 | `modelRouting.childHeavy` | string (opcional) | modelo del hijo de un ticket pesado; ausente usa `child` |
+| `modelRouting.childLight` | string (opcional) | modelo del hijo de una tarea liviana (QA acotado, docs, CI); ausente usa `child` |
 | `modelRouting.forbidden` | string[] (opcional) | modelos que ningun rol puede usar, prendido o apagado (`"fable"` cubre cualquier id que lo nombre); un rol con uno prohibido cuenta como ausente |
+| `childSkills` | string[] (opcional) | skills que todo hijo despachado invoca con `Skill` antes de cualquier otra herramienta; el mod del hijo suma las de la línea `Skills:` del spec y niega el resto hasta cargarlas |
 
 `modelRouting` es una eleccion y no un hecho: que un modelo este disponible no
 dice cual quiere la persona para cada rol. Se cambia con `/model-routing
@@ -109,8 +111,10 @@ eleccion de la persona, no algo que el sistema revele por si solo.
       "enabled": true,
       "conductor": "<modelo-fuerte>",
       "child": "<modelo-rapido>",
-      "childHeavy": "<modelo-fuerte>"
-    }
+      "childHeavy": "<modelo-fuerte>",
+      "childLight": "<modelo-liviano>"
+    },
+    "childSkills": ["<skill-de-todo-hijo>"]
   }
 }
 ```

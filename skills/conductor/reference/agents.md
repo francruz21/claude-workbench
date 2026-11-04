@@ -92,8 +92,8 @@ orca-ide worktree set --worktree "id:$wt" \
 
 orca-ide terminal wait --terminal "$handle" --for tui-idle --timeout-ms 60000 --json
 # Solo con choices.modelRouting.enabled: el modelo del hijo, ANTES del dispatch.
-orca-ide terminal send --terminal "$handle" --text "/model <child|childHeavy>" --enter --json
-task="$(orca-ide orchestration task-create --spec "<spec del ticket>" --json | jq -r '.result.task.id // .result.id // empty')"
+orca-ide terminal send --terminal "$handle" --text "/model <childLight|child|childHeavy>" --enter --json
+task="$(orca-ide orchestration task-create --spec "<spec del ticket, con su línea Skills: a, b>" --json | jq -r '.result.task.id // .result.id // empty')"
 [ -n "$task" ] || echo "task-create sin id: leer su salida antes de despachar"
 dispatch="$(orca-ide orchestration dispatch --task "$task" --to "$handle" --inject --json | jq -r '.result.dispatch.id // .result.id // empty')"
 # $task (task_…) y $dispatch (ctx_…) van al registro: conductor-ledger.sh child --task-id / --dispatch-id
@@ -142,9 +142,11 @@ recibe `/model <modelo>` por `terminal send` entre el `tui-idle` y el
 
 Sirve igual con un hijo vivo (una retoma, un hijo que pasa a `childHeavy`
 porque el ticket resultó más grande): se le manda el `/model` y se sigue.
+`childLight` (o `child`, si no está) para lo liviano: un QA acotado, docs, CI;
 `child` es el default; `childHeavy` (o `child`, si no está) para un ticket con
-decisiones de diseño, seguridad, migraciones o mucho alcance. Lo decide el
-conductor y lo dice al reportar el hijo creado ("con sonnet").
+decisiones de diseño, seguridad, permisos, pagos, migraciones o mucho alcance.
+Lo decide el conductor por hijo, lo varía dentro de la tanda, y lo dice al
+reportar el hijo creado ("con haiku: QA de un solo flujo").
 
 Con el mod cargado, un `dispatch --inject` a un handle que no recibió su
 `/model` en esta sesión se niega. Con el ruteo apagado o sin

@@ -16,7 +16,7 @@ import {
 const caps = (modelRouting?: unknown) =>
   JSON.stringify({ detected: { gh: true }, choices: { tracker: 'linear', ...(modelRouting === undefined ? {} : { modelRouting }) } })
 
-const ON = { enabled: true, conductor: 'opus', child: 'sonnet', childHeavy: 'opus', forbidden: ['fable'] }
+const ON = { enabled: true, conductor: 'opus', child: 'sonnet', childHeavy: 'opus', childLight: 'haiku', forbidden: ['fable'] }
 
 describe('parseRouting', () => {
   test('a missing file or key is off, as today', () => {
@@ -31,6 +31,7 @@ describe('parseRouting', () => {
       conductor: 'opus',
       child: null,
       childHeavy: 'claude-opus-5-5[1m]',
+      childLight: null,
       forbidden: [],
     })
   })
@@ -78,11 +79,18 @@ describe('anchorSection', () => {
     expect(anchorSection({ ...ON, conductor: null })).toContain('choices.modelRouting.conductor')
   })
 
-  test('on names both child models and the order of the steps', () => {
+  test('on names the three child models, asks to vary them, and the order of the steps', () => {
     const text = anchorSection(ON)
-    expect(text).toContain('Hijo: `sonnet`')
-    expect(text).toContain('hijo pesado: `opus`')
+    expect(text).toContain('liviano `haiku`')
+    expect(text).toContain('común `sonnet`')
+    expect(text).toContain('pesado `opus`')
+    expect(text).toContain('se varía dentro de la tanda')
     expect(text).toContain('ANTES del `dispatch --inject`')
+  })
+
+  test('without childLight the light child falls back to child', () => {
+    expect(anchorSection({ ...ON, childLight: null })).toContain('liviano `sonnet`')
+    expect(parseCommand('set childLight haiku')).toEqual({ kind: 'set', role: 'childLight', model: 'haiku' })
   })
 })
 

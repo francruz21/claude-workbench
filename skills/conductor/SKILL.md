@@ -338,7 +338,7 @@ En una sesión armada:
   de modelos prendido, un `dispatch --inject` a un hijo al que esta sesión no
   le mandó su `/model`.
 - **Ruteo de modelos.** `/model-routing on|off|status` y `/model-routing set
-  <conductor|child|childHeavy> <modelo>` escriben `choices.modelRouting` en
+  <conductor|child|childHeavy|childLight> <modelo>` escriben `choices.modelRouting` en
   `capabilities.json`. El ancla dice qué modelo mandarle a cada hijo, y al
   armarse la sesión pasa sola al modelo del conductor.
 - **Vista.** El pane **Tanda**, el resumen en la status line, un toast por cada
@@ -796,9 +796,23 @@ tiene flag de modelo, y un `settings.local.json` en el worktree llega tarde: el
 agente ya arrancó dentro del mismo `create`. Qué modelo lo decide el conductor
 por ticket, sin preguntar:
 
-- `child` — el default: implementar un ticket acotado.
-- `childHeavy` — decisiones de diseño, seguridad, migraciones, o mucho
-  alcance. Si no está definido, se usa `child`.
+- `childLight` — lo liviano: un QA de un caso acotado, docs, CI, infra sin
+  superficie, una revisión de lectura. Si no está definido, se usa `child`.
+- `child` — el default: implementar un ticket acotado, o un QA con varios flujos.
+- `childHeavy` — decisiones de diseño, seguridad, permisos, pagos, migraciones
+  o mucho alcance. Si no está definido, se usa `child`.
+
+Se elige por hijo y **se varía dentro de la tanda**: despachar todos con el
+mismo modelo cuando las tareas no pesan lo mismo es el error a evitar. Al
+reportar la tanda, decir qué modelo lleva cada hijo y por qué.
+
+**Las skills de cada hijo.** El `--spec` lleva una línea `Skills: a, b, c` con
+las de dominio que el ticket necesita (pagos, permisos, migraciones, SEO…). El
+mod del hijo junta esa línea con `choices.childSkills` (las de todo hijo) y le
+niega cualquier otra herramienta hasta que las invoque con `Skill`. No hace
+falta que el hijo cargue `ticket-workflow` para quedar protegido: el despacho
+solo ya lo arma (órdenes solo de su conductor, sin subagentes, sin hablarle al
+usuario), así que vale igual para un hijo de QA.
 
 El conductor mismo corre en `choices.modelRouting.conductor`: revisa diffs y
 decide gates, así que es el rol que pide el modelo más fuerte. Con el mod
