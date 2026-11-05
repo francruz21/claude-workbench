@@ -18,6 +18,7 @@ import {
   isAsk,
   isDispatched,
   isFromConductor,
+  cededTo,
   isHandoff,
   isMine,
   isWorkBranch,
@@ -225,7 +226,14 @@ async function relayPerson($: EngineInterface, text: string): Promise<{ drop: st
 // A rotated conductor's successor takes over only once the old one's terminal is gone:
 // a second conductor running in parallel cannot claim a live conductor's child.
 async function acceptHandoff($: EngineInterface, message: Message): Promise<boolean> {
-  const superior = await read($, conductor)
+  const superior = await superiorOf($)
+  // Or the live conductor hands it over itself.
+  const ceded = cededTo(message, superior)
+  if (ceded !== null) {
+    await setConductor($, ceded)
+
+    return true
+  }
   if (!isHandoff(message) || message.from_handle === superior) return false
   if (superior !== null && liveHandles((await orca($, 'terminal', 'list')) ?? '').has(superior)) return false
   await setConductor($, message.from_handle)
