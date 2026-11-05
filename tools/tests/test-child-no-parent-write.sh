@@ -6,8 +6,8 @@ REPO="$(cd "$HERE/../.." && pwd)"
 . "$HERE/lib.sh"
 
 HOOK="$REPO/tools/hooks/pretooluse-child-no-parent-write.py"
-CHILD="repo::/home/u/orca/workspaces/talentia/edw-1-x"
-PARENT="repo::/home/u/Documentos/talentia"
+CHILD="repo::/srv/orca/workspaces/app/tck-1-x"
+PARENT="repo::/srv/app"
 
 # run <worktree-id> <command>: feeds the hook a Bash tool call
 run() {
