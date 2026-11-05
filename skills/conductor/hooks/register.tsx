@@ -217,7 +217,7 @@ async function arm($: EngineInterface, on: boolean): Promise<void> {
 
 async function refresh($: EngineInterface, path: string, isFirst: boolean): Promise<void> {
   const text = await readText($, path)
-  const next = text === null ? [] : (parseLedger(text) ?? [])
+  const next = text === null ? [] : (parseLedger(text, await $.session.id()) ?? [])
   const prev = await read($, rows)
   if (JSON.stringify(prev) === JSON.stringify(next)) return
 

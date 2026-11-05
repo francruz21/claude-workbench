@@ -14,10 +14,11 @@ const LEDGER = JSON.stringify({
     'TCK-1': {
       name: 'TCK-1 · activo',
       state: 'open',
+      owner: 'sess-1',
       updatedAt: '2026-10-13T11:58:00Z',
       prs: [{ repo: 'o/front', number: 7, gate: 'GREEN' }],
     },
-    'TCK-2': { name: 'TCK-2 · viejo', state: 'open', updatedAt: '2026-09-01T00:00:00Z' },
+    'TCK-2': { name: 'TCK-2 · viejo', state: 'open', owner: 'sess-1', updatedAt: '2026-09-01T00:00:00Z' },
   },
 })
 

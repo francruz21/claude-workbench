@@ -292,3 +292,16 @@ test('a handoff takes over only once the old conductor is gone', async ($: any, 
   await $.prompt.submit({ text: '[conductor term_new] seguí', origin: { kind: 'composer' } } as never)
   expect(prompts.at(-1)).toBe('[conductor term_new] seguí')
 })
+
+test('the live conductor can hand its child to another session', async ($: any, on: On) => {
+  const live: string[] = ['term_c', 'term_new']
+  const { inbox, prompts, clock } = host(on, { isDispatched: true, live })
+  await start($)
+  await $.skill.prompt({ skill: 'ticket-workflow', text: 'skill body' })
+
+  inbox.unshift({ id: 'c1', from_handle: 'term_c', to_handle: 'term_me', type: 'status', read: 0, subject: 'Relevo de conductor', body: 'desde ahora tu conductor es term_new' })
+  await clock.advance(60_000)
+  await clock.settle()
+  await $.prompt.submit({ text: '[conductor term_new] seguí', origin: { kind: 'composer' } } as never)
+  expect(prompts.at(-1)).toBe('[conductor term_new] seguí')
+})

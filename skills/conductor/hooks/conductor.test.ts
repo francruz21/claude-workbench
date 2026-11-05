@@ -5,7 +5,7 @@ const NOW = Date.parse('2026-10-13T12:00:00Z')
 
 // The same ticket before it has a PR: its child is still on the hook to deliver.
 const LEDGER_NO_PR = JSON.stringify({
-  tickets: { 'TCK-1': { name: 'TCK-1 · uno', state: 'open', updatedAt: '2026-10-13T11:58:00Z', child: { handle: 'term_a' }, prs: [] } },
+  tickets: { 'TCK-1': { name: 'TCK-1 · uno', state: 'open', owner: 'sess-1', updatedAt: '2026-10-13T11:58:00Z', child: { handle: 'term_a' }, prs: [] } },
 })
 
 const LEDGER = JSON.stringify({
@@ -13,10 +13,13 @@ const LEDGER = JSON.stringify({
     'TCK-1': {
       name: 'TCK-1 · uno',
       state: 'open',
+      owner: 'sess-1',
       updatedAt: '2026-10-13T11:58:00Z',
       child: { handle: 'term_a' },
       prs: [{ repo: 'o/front', number: 7, gate: 'PENDING' }],
     },
+    // Another conductor session's ticket in the same workspace file.
+    'TCK-9': { name: 'TCK-9 · ajeno', state: 'open', owner: 'sess-otra', updatedAt: '2026-10-13T11:58:00Z', child: { handle: 'term_ajeno' }, prs: [] },
   },
 })
 
@@ -128,6 +131,25 @@ test('loading the conductor skill arms the session', async ($: any, on: On) => {
   await clock.advance(60_000)
   await clock.settle()
   expect(prompts.length).toBe(1)
+})
+
+// Every conductor of a workspace shares the ledger file: another session's
+// ticket is not this one's to show, to wake on or to nudge.
+test("another conductor session's ticket never reaches this one", async ($: any, on: On) => {
+  const { inbox, prompts, clock, sent, orca } = host(on)
+  await start($)
+  await $.skill.prompt({ skill: 'conductor', text: 'skill body' })
+  orca.set([{ handle: 'term_ajeno', title: '✳ TCK-9 · ajeno', connected: true, orphaned: false, lastOutputAt: NOW - 10 * 60_000 }], '● listo, espero.')
+
+  const anchor = (await compose($)).sections.find((s: { id: string }) => s.id === 'conductor:anchor')
+  expect(anchor?.text).toContain('TCK-1 · uno')
+  expect(anchor?.text).not.toContain('TCK-9')
+
+  inbox.push({ id: 'm9', from_handle: 'term_ajeno', type: 'decision_gate', read: 0, subject: 'Gate ajeno' })
+  await clock.advance(60_000)
+  await clock.settle()
+  expect(prompts.filter(p => p.includes('m9'))).toEqual([])
+  expect(sent).not.toContain('term_ajeno')
 })
 
 // Seven 31-minute jumps run some 2,600 poll ticks: it sits near the default 5 s.
