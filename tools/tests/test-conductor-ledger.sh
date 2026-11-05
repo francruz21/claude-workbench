@@ -18,6 +18,9 @@ trap 'rm -rf "$TMP"' EXIT
 export WORKBENCH_STATE_DIR="$TMP/state"
 export WORKBENCH_WORKSPACE="$TMP/workspace"
 mkdir -p "$WORKBENCH_WORKSPACE"
+# Corridos desde una sesion de Claude Code heredarian su id como dueno; los
+# tests de duenos lo fijan a mano.
+unset CLAUDE_CODE_SESSION_ID WORKBENCH_CONDUCTOR
 
 led() { bash "$LEDGER" "$@"; }
 
@@ -165,5 +168,36 @@ else _fail 'brief es compacto' "$BRIEF_LINES lineas, mas de 40"; fi
 WORKBENCH_WORKSPACE="$TMP/otro" led open TCK-3 --slug tck-3-tercer-slug >/dev/null
 assert_not_contains 'TCK-3' 'otro workspace no ve los tickets de este' led open-tickets
 assert_not_contains 'TCK-1' 'ni este los del otro' env WORKBENCH_WORKSPACE="$TMP/otro" bash "$LEDGER" open-tickets
+
+# --- aislamiento entre conductores del mismo workspace ----------------------
+# El error de produccion: varios conductores en el mismo wrapper compartian el
+# registro, se veian los hijos y se contestaban los gates entre si.
+export WORKBENCH_WORKSPACE="$TMP/compartido"
+mkdir -p "$WORKBENCH_WORKSPACE"
+A() { WORKBENCH_CONDUCTOR=sesion-a bash "$LEDGER" "$@"; }
+B() { WORKBENCH_CONDUCTOR=sesion-b bash "$LEDGER" "$@"; }
+A open TCK-10 --slug tck-10-de-a >/dev/null
+B open TCK-20 --slug tck-20-de-b >/dev/null
+assert_contains 'TCK-10' 'A ve su ticket' A open-tickets
+assert_not_contains 'TCK-20' 'A no ve el ticket de B' A open-tickets
+assert_not_contains 'TCK-10' 'B no ve el ticket de A' B open-tickets
+assert_not_contains 'tck-20-de-b' 'el brief de A no lista el de B' A brief
+assert_contains 'OTRAS SESIONES  1' 'el brief de A cuenta el de B sin mostrarlo' A brief
+assert_exit 1 'B no puede escribir en el ticket de A' B child TCK-10 --handle term_intruso
+assert_not_contains 'term_intruso' 'y el hijo de A queda intacto' A get TCK-10
+assert_exit 1 'B no puede reabrir el ticket de A' B open TCK-10 --slug otro
+assert_exit 0 'B lo adopta a pedido' B adopt TCK-10
+assert_contains 'TCK-10' 'despues del relevo B lo ve' B open-tickets
+assert_not_contains 'TCK-10' 'y A deja de verlo' A open-tickets
+assert_exit 1 'A ya no puede escribirlo' A note TCK-10 --add x
+
+# Un ticket de antes de los duenos no es de nadie: no lo ve ninguno, el brief
+# lo marca, y la primera sesion que lo escribe se lo queda.
+bash "$LEDGER" open TCK-30 --slug tck-30-viejo >/dev/null
+assert_not_contains 'TCK-30' 'un ticket sin dueno no aparece en open-tickets' A open-tickets
+assert_contains 'SIN DUENO  TCK-30' 'el brief lo marca sin dueno' A brief
+A note TCK-30 --add 'es mio' >/dev/null
+assert_contains 'TCK-30' 'al escribirlo queda de A' A open-tickets
+assert_exit 1 'y B ya no puede escribirlo' B note TCK-30 --add x
 
 report 'test-conductor-ledger'

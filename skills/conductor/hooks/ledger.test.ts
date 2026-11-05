@@ -131,3 +131,15 @@ describe('changes', () => {
     expect(changes(before, before)).toEqual([])
   })
 })
+
+test('parseLedger with an owner keeps only that session\'s tickets', () => {
+  const text = JSON.stringify({
+    tickets: {
+      'TCK-1': { name: 'mio', state: 'open', owner: 's1' },
+      'TCK-2': { name: 'ajeno', state: 'open', owner: 's2' },
+      'TCK-3': { name: 'sin dueno', state: 'open' },
+    },
+  })
+  expect(parseLedger(text, 's1')?.map(r => r.id)).toEqual(['TCK-1'])
+  expect(parseLedger(text)?.map(r => r.id)).toEqual(['TCK-1', 'TCK-2', 'TCK-3'])
+})

@@ -28,6 +28,7 @@ type RawTicket = {
   updatedAt?: unknown
   notes?: unknown
   child?: unknown
+  owner?: unknown
 }
 
 const asString = (value: unknown): string | null =>
@@ -53,8 +54,10 @@ function lastNoteOf(value: unknown): string | null {
   return asString(last?.text)
 }
 
-// Open tickets only, or null when the text is not a ledger.
-export function parseLedger(text: string): Row[] | null {
+// Open tickets only, or null when the text is not a ledger. With `owner`, only
+// the tickets that conductor session opened: every conductor of a workspace
+// shares the file, and a ticket with no owner (older entries) belongs to none.
+export function parseLedger(text: string, owner?: string | null): Row[] | null {
   let data: unknown
   try {
     data = JSON.parse(text)
@@ -67,6 +70,7 @@ export function parseLedger(text: string): Row[] | null {
 
   return Object.entries(tickets as Record<string, RawTicket>)
     .filter(([, t]) => t?.state === 'open')
+    .filter(([, t]) => owner == null || asString(t.owner) === owner)
     .map(([id, t]) => ({
       id,
       name: asString(t.name) ?? id,
