@@ -444,6 +444,19 @@ El usuario abre terminales en paralelo, y **una sesión nueva no es este
 conductor**. No hereda la tanda ni sabe qué gates ya se relevaron: el registro en
 disco dice qué existe, no quién lo está conduciendo.
 
+**El registro lo hace cumplir.** Todos los conductores de un workspace comparten
+el archivo, así que cada ticket guarda su dueño: la sesión que lo abrió
+(`CLAUDE_CODE_SESSION_ID`). `brief`, `open-tickets`, `handoff` y el mod (pane,
+despertador, empujones a hijos parados) solo ven los tickets propios; los de
+otras sesiones aparecen contados en una línea, nunca listados. Escribir en un
+ticket ajeno, o abrir uno que ya conduce otra sesión, falla con exit 1. Un ticket
+de antes de los dueños sale en `SIN DUENO` y queda de la primera sesión que lo
+escribe. Relevar a otra sesión es explícito:
+
+```bash
+$WB/tools/conductor-ledger.sh adopt <TCK-N>   # recién con esto lo ves y lo tocás
+```
+
 Reglas para una sesión que arranca al lado de otra:
 
 - **Solo maneja los agentes que creó ella.** No relevea gates, no anuncia y no
@@ -457,7 +470,7 @@ Reglas para una sesión que arranca al lado de otra:
   (`worktree list`, el estado de las PRs, la label de anunciado), nunca de
   memoria ni adivinando qué hizo la otra sesión. El registro es compartido y está
   en disco, así que adoptar una tanda dejó de ser una investigación: es leer diez
-  líneas y verificarlas. Si están todos muertos no hay a quién pisar, y aplica el
+  líneas, verificarlas, y `adopt` de cada ticket que se releva. Si están todos muertos no hay a quién pisar, y aplica el
   bullet de abajo: se adopta sin preguntar.
 - **Una sesión muerta no es una sesión hermana.** La regla de arriba existe para
   que dos conductores **vivos** no le contesten el mismo gate al mismo hijo ni

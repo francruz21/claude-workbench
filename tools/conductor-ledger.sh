@@ -31,6 +31,13 @@ command -v jq >/dev/null 2>&1 || die 'falta jq, que es la dependencia de este sc
 
 now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 
+# La sesion que conduce. Todos los conductores de un workspace comparten este
+# archivo, asi que cada ticket guarda su dueno: una sesion no ve, no toca y no
+# despierta con los tickets de otra. Antes de esto, dos conductores en el mismo
+# wrapper se leian los hijos y se contestaban los gates entre si. Fuera de
+# Claude Code no hay sesion: sin dueno, todo se comporta como antes.
+me() { printf '%s' "${WORKBENCH_CONDUCTOR:-${CLAUDE_CODE_SESSION_ID:-}}"; }
+
 # La clave del archivo sale de la ruta del workspace, saneada igual que las
 # rutas de proyecto de Claude Code: "/" -> "-". Asi dos workspaces distintos
 # nunca comparten registro, y la ruta es predecible sin tener que guardarla.
@@ -72,10 +79,25 @@ ensure_ledger() {
   printf '%s\n' "$file"
 }
 
-need_ticket() {
+has_ticket() {
   local file="$1" ticket="$2"
   jq -e --arg t "$ticket" '.tickets | has($t)' < "$file" >/dev/null 2>&1 ||
     die "el ticket $ticket no esta en el registro; abrilo primero con \"open\"" 1
+}
+
+# Toda escritura pasa por aca: el ticket existe y es de esta sesion. Uno sin
+# dueno (de antes de que hubiera duenos) queda de la primera sesion que lo
+# escribe; uno de otra sesion no se toca, salvo con "adopt".
+need_ticket() {
+  local file="$1" ticket="$2" mine owner
+  has_ticket "$file" "$ticket"
+  mine="$(me)"; [ -n "$mine" ] || return 0
+  owner="$(jq -r --arg t "$ticket" '.tickets[$t].owner // ""' < "$file")"
+  if [ -z "$owner" ]; then
+    write_jq "$file" --arg t "$ticket" --arg o "$mine" '.tickets[$t].owner = $o'
+  elif [ "$owner" != "$mine" ]; then
+    die "$ticket lo conduce otra sesion (${owner:0:8}): no lo toques. Si de verdad la relevas, \"adopt $ticket\"" 1
+  fi
 }
 
 # Los workflows del gate y los jobs que tienen que pasar, del config del
@@ -163,13 +185,17 @@ uso: conductor-ledger.sh <comando> [args]
   note <ticket> --add "<una linea>"      anota criterio que Orca no puede devolver
   handoff                                verifica si esta sesion puede rotar, y como
   close <ticket>                         colapsa la entrada y OLVIDA todo lo del hijo
+  adopt <ticket>                         esta sesion releva al conductor que lo abrio
   get <ticket>                           JSON de una entrada
   open-tickets                           IDs de los tickets todavia abiertos
   brief                                  estado de la tanda, compacto, para rehidratar
   list                                   el registro entero (JSON)
 
 Variables: WORKBENCH_STATE_DIR (default ~/.claude/workbench/state),
-           WORKBENCH_WORKSPACE (default: la raiz del repo actual).
+           WORKBENCH_WORKSPACE (default: la raiz del repo actual),
+           WORKBENCH_CONDUCTOR (default: CLAUDE_CODE_SESSION_ID) -- el dueno
+           de los tickets que abre esta sesion; brief, open-tickets y las
+           escrituras solo ven los propios.
 USAGE
 }
 
@@ -200,9 +226,16 @@ case "$cmd" in
     if jq -e --arg t "$ticket" '.tickets[$t].state == "closed"' < "$file" >/dev/null 2>&1; then
       die "$ticket ya esta cerrado en el registro; usa \"set\" si de verdad hay que reabrirlo" 1
     fi
-    write_jq "$file" --arg t "$ticket" --arg s "$slug" --arg n "$name" --arg at "$(now)" \
+    # Un ticket, un conductor: si otra sesion ya lo tiene abierto, abrirlo aca
+    # es pisarle el hijo.
+    owner="$(jq -r --arg t "$ticket" '.tickets[$t].owner // ""' < "$file")"
+    if [ -n "$owner" ] && [ -n "$(me)" ] && [ "$owner" != "$(me)" ]; then
+      die "$ticket ya lo conduce otra sesion (${owner:0:8}). Si de verdad la relevas, \"adopt $ticket\"" 1
+    fi
+    write_jq "$file" --arg t "$ticket" --arg s "$slug" --arg n "$name" --arg at "$(now)" --arg o "$(me)" \
       '.tickets[$t] = ((.tickets[$t] // {}) + {
          slug: $s, name: $n, state: "open", updatedAt: $at,
+         owner: (if $o == "" then (.tickets[$t].owner // null) else $o end),
          child: ((.tickets[$t].child) // {}),
          prs: ((.tickets[$t].prs) // []),
          announced: ((.tickets[$t].announced) // null),
@@ -491,9 +524,10 @@ case "$cmd" in
     # estado. Casi todo esta afuera de la sesion: los IDs aca, la conversacion
     # entera y los gates en Orca, los checks en GitHub. Lo unico que se pierde
     # es lo que este conductor sepa y no haya escrito. Esto lo verifica.
-    faltan="$(jq -r '
+    faltan="$(jq -r --arg me "$(me)" '
       [.tickets | to_entries[]
        | select(.value.state != "closed")
+       | select($me == "" or .value.owner == $me)
        | select((.value.child.handle // "") == "" or (.value.child.worktreeId // "") == "")
        | .key] | join(" ")' < "$file")"
     printf 'ROTAR ESTA SESION\n\n'
@@ -503,14 +537,16 @@ case "$cmd" in
       printf 'anotalo con "child <ticket> --handle <h> --worktree-id <id>" y volve a correr esto.\n'
       exit 1
     fi
-    n_open="$(jq '[.tickets[] | select(.state != "closed")] | length' < "$file")"
+    n_open="$(jq --arg me "$(me)" '[.tickets[] | select(.state != "closed") | select($me == "" or .owner == $me)] | length' < "$file")"
     printf 'SI. %s ticket(s) abierto(s), todos con handle y worktree en el registro.\n\n' "$n_open"
     printf 'Lo que el sucesor corre para retomar, sin adivinar nada:\n\n'
-    jq -r --arg me "$0" '
-      "  " + $me + " brief",
+    jq -r --arg self "$0" --arg me "$(me)" '
+      "  " + $self + " brief",
       "",
       (.tickets | to_entries[] | select(.value.state != "closed")
+       | select($me == "" or .value.owner == $me)
        | "  # " + .key + "  (" + .value.slug + ")"
+       + "\n  " + $self + " adopt " + .key + "   # el sucesor lo hace suyo; sin esto no lo ve"
        + "\n  orca-ide orchestration check --terminal " + (.value.child.handle // "-") + " --all --json"
        + "\n  orca-ide orchestration send --to " + (.value.child.handle // "-") + " --from <tu handle> --type status --subject \"Relevo de conductor\" --body \"retomo la tanda\" --json   # cuando la sesion vieja ya este cerrada"
        + "\n  orca-ide orchestration gate-list --json"
@@ -553,22 +589,40 @@ case "$cmd" in
     printf '%s cerrado. Olvidate del hijo: handles, taskId, worktree y QA salieron del registro.\n' "$ticket"
     ;;
 
+  adopt)
+    # El relevo explicito: esta sesion pasa a conducir un ticket que abrio
+    # otra (la vieja se cerro, o el usuario lo pidio). Nunca implicito, porque
+    # tomar el ticket de un conductor vivo es lo que mezclaba las tandas.
+    file="$(ensure_ledger)"
+    ticket="${1:-}"; [ -n "$ticket" ] || die 'falta el ticket'
+    has_ticket "$file" "$ticket"
+    [ -n "$(me)" ] || die 'no hay sesion que adopte: falta CLAUDE_CODE_SESSION_ID o WORKBENCH_CONDUCTOR'
+    prev="$(jq -r --arg t "$ticket" '.tickets[$t].owner // "nadie"' < "$file")"
+    write_jq "$file" --arg t "$ticket" --arg o "$(me)" --arg at "$(now)" \
+      '.tickets[$t].owner = $o | .tickets[$t].updatedAt = $at'
+    printf '%s adoptado (antes: %s). Avisale al hijo con un send desde tu handle.\n' "$ticket" "${prev:0:8}"
+    ;;
+
   get)
     file="$(ensure_ledger)"
     ticket="${1:-}"; [ -n "$ticket" ] || die 'falta el ticket'
-    need_ticket "$file" "$ticket"
+    has_ticket "$file" "$ticket"
     jq --arg t "$ticket" '.tickets[$t]' < "$file"
     ;;
 
   open-tickets)
     file="$(ensure_ledger)"
-    jq -r '.tickets | to_entries[] | select(.value.state != "closed") | .key' < "$file"
+    jq -r --arg me "$(me)" '.tickets | to_entries[] | select(.value.state != "closed")
+      | select($me == "" or .value.owner == $me) | .key' < "$file"
     ;;
 
   brief)
     file="$(ensure_ledger)"
-    jq -r '
-      def gates: if (.prs | length) == 0 then "sin PR"
+    jq -r --arg me "$(me)" '
+      def mine: $me == "" or .value.owner == $me;
+      .tickets as $all
+      | .tickets |= with_entries(select(mine))
+      | def gates: if (.prs | length) == 0 then "sin PR"
                  else ([.prs[] | "#\(.number)=\(.gate)"] | join(" ")) end;
       def prlist: ([.prs[]? | "\(.repo)#\(.number)"] | join(", "));
       "REGISTRO  " + .workspace,
@@ -585,6 +639,14 @@ case "$cmd" in
              then "\n" + ([(.value.notes // [])[] | "      nota: " + .text] | join("\n"))
              else "" end)
       ),
+      (($all | to_entries | map(select(.value.state != "closed" and (.value.owner // "") == "")) | map(.key)) as $huerfanos
+       | if ($me != "" and ($huerfanos | length) > 0)
+         then "\nSIN DUENO  " + ($huerfanos | join(" ")) + "  -- de antes de los duenos; si alguno es tuyo: adopt <ticket>"
+         else empty end),
+      (($all | to_entries | map(select(.value.state != "closed" and (.value.owner // "") != "" and .value.owner != $me)) | length) as $otros
+       | if ($me != "" and $otros > 0)
+         then "OTRAS SESIONES  " + ($otros | tostring) + " ticket(s) abiertos de otros conductores: no son tuyos, no los toques"
+         else empty end),
       "",
       "CERRADOS  (" + ((.tickets | to_entries | map(select(.value.state == "closed")) | length) | tostring) + ") -- una linea, sin contexto del hijo",
       ( (.tickets | to_entries | map(select(.value.state == "closed")) | sort_by(.value.closedAt) | .[])
