@@ -3,14 +3,20 @@ import type { On } from 'claude-code'
 
 // The host beneath the plugin: Orca knows this terminal as term_me with a live
 // task, the conductor writes from term_c, and git has one work branch.
-function host(on: On, opts: { isDispatched: boolean; live?: string[] }) {
+// Orca's real shape: `task-list` has no assignee, `dispatch-show` does.
+function host(on: On, opts: { isDispatched: boolean; live?: string[]; childSkills?: string[] }) {
   const inbox: object[] = []
   const prompts: string[] = []
   const sends: string[][] = []
   const contexts: (readonly string[])[] = []
   const clock = mock.clock(on, { now: 0 })
-  mock.env(on, { ORCA_PANE_KEY: 'tab2:leafB' })
+  mock.env(on, { ORCA_PANE_KEY: 'tab2:leafB', HOME: '/h' })
   mock.store(on)
+  on('fs.read', async ($, e) => {
+    if (e.path !== '/h/.claude/workbench/capabilities.json' || opts.childSkills === undefined) throw new Error('ENOENT')
+
+    return { value: JSON.stringify({ choices: { childSkills: opts.childSkills } }) }
+  })
   on('session.start', async ($, e) => ({ cwd: e.cwd }))
   on('session.id', async () => ({ value: 'sess-1' }))
   on('command.register', async ($, e) => ({ value: { command: e.name } }))
@@ -34,9 +40,14 @@ function host(on: On, opts: { isDispatched: boolean; live?: string[] }) {
       return out(JSON.stringify({ result: { terminals: [{ handle: 'term_me', tabId: 'tab2', leafId: 'leafB' }, ...others] } }))
     }
     if (cmd.includes('task-list')) {
-      const tasks = opts.isDispatched ? [{ status: 'dispatched', assignee_handle: 'term_me', created_by_terminal_handle: 'term_c' }] : []
+      const tasks = opts.isDispatched ? [{ id: 'task_1', status: 'dispatched', created_by_terminal_handle: 'term_c' }] : []
 
       return out(JSON.stringify({ result: { tasks } }))
+    }
+    if (cmd.includes('dispatch-show')) {
+      const dispatch = { assignee_handle: 'term_me', assignee_pane_key: 'tab2:leafB', status: 'dispatched', dispatched_at: '2026-01-01 10:00:00' }
+
+      return out(JSON.stringify({ result: { dispatch } }))
     }
     if (cmd.includes('orchestration inbox')) return out(JSON.stringify({ result: { messages: inbox } }))
     if (cmd.includes('orchestration send')) {
@@ -55,6 +66,9 @@ function host(on: On, opts: { isDispatched: boolean; live?: string[] }) {
 
   return { inbox, prompts, sends, contexts, clock }
 }
+
+const preamble = (coordinator: string) =>
+  `You are working inside Orca, a multi-agent IDE. You are a dispatched worker.\nYour coordinator's terminal handle is: ${coordinator}\nYour task ID is: task_1\n\n# QA de TCK-1`
 
 const start = ($: any) => $.session.start({ cwd: '/wt/repo', surface: 'terminal', isInteractive: true })
 const compose = ($: any) =>
@@ -103,10 +117,61 @@ test('without a conductor the person is the one it talks to: no anchor, no guard
   expect((await $.tool.call({ tool: 'AskUserQuestion', tool_use_id: 'q', questions: [] } as never)).deny).toBeUndefined()
 })
 
-test('a session that never loaded the skill is left alone', async ($: any, on: On) => {
-  host(on, { isDispatched: true })
+test('a session nobody dispatched is left alone', async ($: any, on: On) => {
+  host(on, { isDispatched: false })
   await start($)
   expect((await bash($, 'orca-ide orchestration send --type heartbeat')).deny).toBeUndefined()
+})
+
+test('a dispatched session is a child from the start, skill or not', async ($: any, on: On) => {
+  const { prompts, sends } = host(on, { isDispatched: true })
+  await start($)
+  expect((await bash($, 'orca-ide orchestration send --type heartbeat')).deny).toContain('run_in_background')
+  expect((await $.tool.call({ tool: 'Agent', tool_use_id: 'a', prompt: 'x', description: 'x' } as never)).deny).toContain('subagentes')
+
+  // The person typing at a QA child that never loaded ticket-workflow: up to the conductor.
+  const typed = await $.prompt.submit({ text: 'hacé otra cosa', origin: { kind: 'composer' } } as never)
+  expect(typed.drop).toContain('term_c')
+  expect(prompts).toEqual([])
+  expect(sends.at(-1)?.join(' ')).toContain('--to term_c --from term_me --type escalation')
+})
+
+test('the first dispatch arms a session Orca had not reported yet, and names its conductor', async ($: any, on: On) => {
+  const { prompts } = host(on, { isDispatched: false })
+  await start($)
+  await $.prompt.submit({ text: preamble('term_c'), origin: { kind: 'composer' } } as never)
+  expect(prompts.at(-1)).toContain('task_1')
+  expect((await bash($, 'orca-ide orchestration send --type heartbeat')).deny).toContain('run_in_background')
+})
+
+test('a task dispatched by another conductor does not reach the child; an adopter does it once the old one is gone', async ($: any, on: On) => {
+  const live: string[] = ['term_c']
+  const { prompts, sends } = host(on, { isDispatched: true, live })
+  await start($)
+
+  const foreign = await $.prompt.submit({ text: preamble('term_z'), origin: { kind: 'composer' } } as never)
+  expect(foreign.drop).toContain('term_z')
+  expect(prompts).toEqual([])
+  expect(sends.at(-1)?.join(' ')).toContain('--to term_c')
+
+  live.splice(0, live.length)
+  await $.prompt.submit({ text: preamble('term_z'), origin: { kind: 'composer' } } as never)
+  expect(prompts.length).toBe(1)
+  await $.prompt.submit({ text: '[conductor term_z] seguí', origin: { kind: 'composer' } } as never)
+  expect(prompts.at(-1)).toBe('[conductor term_z] seguí')
+})
+
+test('the mandatory skills come before any other tool', async ($: any, on: On) => {
+  host(on, { isDispatched: true, childSkills: ['orca-cli'] })
+  await start($)
+  await $.prompt.submit({ text: `${preamble('term_c')}\nSkills: app-payments`, origin: { kind: 'composer' } } as never)
+
+  const denied = await bash($, 'ls')
+  expect(denied.deny).toContain('`orca-cli`, `app-payments`')
+  await $.tool.call({ tool: 'Skill', tool_use_id: 's1', skill: 'orca-cli' } as never)
+  expect((await bash($, 'ls')).deny).toContain('`app-payments`')
+  await $.tool.call({ tool: 'Skill', tool_use_id: 's2', skill: 'app-payments' } as never)
+  expect((await bash($, 'ls')).deny).toBeUndefined()
 })
 
 test('with prompt.compose skipped, the anchor rides on each prompt until compose runs', async ($: any, on: On) => {
@@ -140,8 +205,9 @@ test('what the person types to a child goes to the conductor, not to the model',
 
   // The conductor's own words, and the dispatch Orca injects, still reach it.
   await $.prompt.submit({ text: '[conductor term_c] seguí con el QA', origin: { kind: 'composer' } } as never)
-  await $.prompt.submit({ text: 'Task t1 · when done send worker_done to term_c', origin: { kind: 'composer' } } as never)
-  expect(prompts).toEqual(['[conductor term_c] seguí con el QA', 'Task t1 · when done send worker_done to term_c'])
+  await $.prompt.submit({ text: preamble('term_c'), origin: { kind: 'composer' } } as never)
+  expect(prompts.length).toBe(2)
+  expect(prompts[1]).toContain('task_1')
   expect(sends.length).toBe(1)
 
   // A slash command is not a message: /hijo off still works from the keyboard.

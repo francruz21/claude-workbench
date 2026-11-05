@@ -5,10 +5,10 @@
 
 import type { Routing } from '../types'
 
-export const ROLES = ['conductor', 'child', 'childHeavy'] as const
+export const ROLES = ['conductor', 'child', 'childHeavy', 'childLight'] as const
 export type Role = (typeof ROLES)[number]
 
-export const OFF: Routing = { enabled: false, conductor: null, child: null, childHeavy: null, forbidden: [] }
+export const OFF: Routing = { enabled: false, conductor: null, child: null, childHeavy: null, childLight: null, forbidden: [] }
 
 // An alias the `/model` command takes (`sonnet`, `opus`) or a full model id.
 const MODEL = /^[a-z0-9][a-z0-9.\-]*(\[[a-z0-9]+\])?$/i
@@ -48,6 +48,7 @@ export function parseRouting(text: string | null): Routing {
       conductor: modelOf(raw.conductor, forbidden),
       child: modelOf(raw.child, forbidden),
       childHeavy: modelOf(raw.childHeavy, forbidden),
+      childLight: modelOf(raw.childLight, forbidden),
       forbidden,
     }
   } catch {
@@ -83,6 +84,7 @@ export function statusText(routing: Routing): string {
     `- conductor: ${routing.conductor ?? '(falta)'}`,
     `- hijo: ${routing.child ?? '(falta)'}`,
     `- hijo pesado: ${routing.childHeavy ?? `(sin definir: usa el del hijo)`}`,
+    `- hijo liviano: ${routing.childLight ?? `(sin definir: usa el del hijo)`}`,
   ]
   const gaps = missing(routing)
   if (gaps.length > 0) lines.push(`Faltan: ${gaps.join(', ')}. Completalo con /model-routing set <rol> <modelo>.`)
@@ -100,9 +102,14 @@ export function anchorSection(routing: Routing): string {
     return `Ruteo de modelos: on, pero falta \`choices.modelRouting.${gaps[0]}\`. No lo completes en silencio: preguntalo (core/resolve.md) o pedí \`/model-routing set ${gaps[0]} <modelo>\`.`
   }
   const heavy = routing.childHeavy ?? routing.child
+  const light = routing.childLight ?? routing.child
 
   return [
-    `Ruteo de modelos: on. Hijo: \`${routing.child}\`; hijo pesado: \`${heavy}\` (ticket con decisiones de diseño, seguridad, migraciones o mucho alcance).`,
+    `Ruteo de modelos: on. Se elige por hijo y se varía dentro de la tanda; no despaches todos con el mismo si las tareas no son iguales.`,
+    `- liviano \`${light}\`: QA de un caso acotado, docs, CI, infra sin superficie, revisión de lectura.`,
+    `- común \`${routing.child}\`: un ticket acotado de código o un QA con varios flujos.`,
+    `- pesado \`${heavy}\`: decisiones de diseño, seguridad, permisos, pagos, migraciones o mucho alcance.`,
+    'Decile al usuario qué modelo lleva cada hijo y por qué.',
     'Al crear un hijo, con el `tui-idle` y ANTES del `dispatch --inject`: `orca-ide terminal send --terminal <handle> --text "/model <modelo>" --enter --json`. Sin eso el dispatch se niega.',
   ].join('\n')
 }
@@ -149,7 +156,7 @@ export function dispatchGuard(command: string, routing: Routing, sent: Record<st
     }
     const handle = flag(part, 'to')
     if (handle && !delivered.has(handle)) {
-      return `el ruteo de modelos está on y ${handle} no recibió su /model. Primero: orca-ide terminal send --terminal ${handle} --text "/model ${routing.child}" --enter --json (o "/model ${routing.childHeavy ?? routing.child}" si el ticket es pesado), después el dispatch.`
+      return `el ruteo de modelos está on y ${handle} no recibió su /model. Primero: orca-ide terminal send --terminal ${handle} --text "/model <modelo>" --enter --json con ${routing.childLight ?? routing.child} (liviano), ${routing.child} (común) o ${routing.childHeavy ?? routing.child} (pesado); después el dispatch.`
     }
   }
 

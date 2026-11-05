@@ -35,7 +35,7 @@ const woken = atom({ plugin: 'conductor', key: 'woken' } as const, [])
 const lastTurnAt = atom({ plugin: 'conductor', key: 'lastTurnAt' } as const, 0)
 const idleNudges = atom({ plugin: 'conductor', key: 'idleNudges' } as const, 0)
 const handle = atom({ plugin: 'conductor', key: 'handle' } as const, null)
-const routing = atom({ plugin: 'conductor', key: 'routing' } as const, { enabled: false, conductor: null, child: null, childHeavy: null, forbidden: [] })
+const routing = atom({ plugin: 'conductor', key: 'routing' } as const, { enabled: false, conductor: null, child: null, childHeavy: null, childLight: null, forbidden: [] })
 const modelSentTo = atom({ plugin: 'conductor', key: 'modelSentTo' } as const, {})
 const isModelPending = atom({ plugin: 'conductor', key: 'isModelPending' } as const, false)
 const heartbeats = atom({ plugin: 'conductor', key: 'heartbeats' } as const, {})
@@ -294,7 +294,7 @@ export const register: Register = on => {
     })
     await $.command.register({
       name: 'model-routing',
-      description: 'Qué modelo usa cada agente de la tanda: "/model-routing on|off|status", "/model-routing set <conductor|child|childHeavy> <modelo>"',
+      description: 'Qué modelo usa cada agente de la tanda: "/model-routing on|off|status", "/model-routing set <conductor|child|childHeavy|childLight> <modelo>"',
     })
     await refresh($, path, true)
     $.clock.every(POLL_MS, () => {

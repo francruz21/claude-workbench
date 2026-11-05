@@ -10,6 +10,7 @@ import {
   anchorText,
   askContext,
   bashGuard,
+  configuredSkills,
   coordinatorOf,
   foreignBody,
   foreignContext,
@@ -18,10 +19,15 @@ import {
   isDispatched,
   isFromConductor,
   isHandoff,
+  isMine,
   isWorkBranch,
   latestForMe,
   liveHandles,
+  missingSkills,
+  openTasks,
   ownHandle,
+  parseDispatch,
+  parseDispatchPreamble,
   parseGitStatus,
   parseInjected,
   parseMessages,
@@ -29,6 +35,8 @@ import {
   relayDropText,
   repoLine,
   signerOf,
+  skillsFirstText,
+  specSkills,
   splitBySender,
   submodulePaths,
   unreadForMe,
@@ -45,6 +53,13 @@ const conductor = atom({ plugin: 'ticket-workflow', key: 'conductor' } as const,
 const repos = atom({ plugin: 'ticket-workflow', key: 'repos' } as const, [])
 const woken = atom({ plugin: 'ticket-workflow', key: 'woken' } as const, [])
 const isComposed = atom({ plugin: 'ticket-workflow', key: 'isComposed' } as const, false)
+const isTicket = atom({ plugin: 'ticket-workflow', key: 'isTicket' } as const, false)
+const required = atom({ plugin: 'ticket-workflow', key: 'requiredSkills' } as const, [])
+const loaded = atom({ plugin: 'ticket-workflow', key: 'loadedSkills' } as const, [])
+
+// Tools a child may use before its mandatory skills are loaded: the ones that load them.
+const BEFORE_SKILLS = new Set(['Skill', 'ToolSearch'])
+const MAX_LOOKUPS = 10
 
 async function run($: EngineInterface, argv: string[], cwd?: string): Promise<string | null> {
   try {
@@ -62,17 +77,61 @@ async function inbox($: EngineInterface, me: string) {
   return parseMessages((await orca($, 'orchestration', 'inbox', '--terminal', me, '--limit', '50')) ?? '')
 }
 
-// Who this terminal is, and whether a coordinator dispatched work to it.
+// Who this terminal is, and whether a coordinator dispatched work to it. Orca
+// keeps a task's assignee in its dispatch context (`dispatch-show`), not in
+// `task-list`; the second is read too, for an Orca that puts it there.
 async function identify($: EngineInterface): Promise<void> {
   const paneKey = await $.env.get('ORCA_PANE_KEY')
   if (!paneKey) return
   const me = ownHandle((await orca($, 'terminal', 'list')) ?? '', paneKey)
   await update($, handle, () => me)
-  if (me === null) return
   const tasks = (await orca($, 'orchestration', 'task-list')) ?? ''
-  await update($, dispatched, () => isDispatched(tasks, me))
-  // The superior is whoever dispatched the live task, never whoever wrote last.
-  if ((await read($, conductor)) === null) await update($, conductor, () => coordinatorOf(tasks, me))
+  let isMineFound = me !== null && isDispatched(tasks, me)
+  let creator = me !== null ? coordinatorOf(tasks, me) : null
+
+  if (!isMineFound) {
+    const found: { createdBy: string | null; at: string }[] = []
+    for (const task of openTasks(tasks).slice(-MAX_LOOKUPS)) {
+      const dispatch = parseDispatch((await orca($, 'orchestration', 'dispatch-show', '--task', task.id)) ?? '')
+      if (dispatch !== null && isMine(dispatch, me, paneKey)) found.push({ createdBy: task.createdBy, at: dispatch.at })
+    }
+    // The first dispatch names the conductor; a later one by someone else does not replace it.
+    found.sort((x, y) => x.at.localeCompare(y.at))
+    if (found.length > 0) {
+      isMineFound = true
+      creator = found[0]?.createdBy ?? null
+    }
+  }
+  // Once dispatched, a child stays one: a finished task does not hand it to the person.
+  if (isMineFound) await update($, dispatched, () => true)
+  if ((await read($, conductor)) === null && creator !== null) await setConductor($, creator)
+}
+
+const keyOf = async ($: EngineInterface, name: string) => `${name}:${await $.session.id()}`
+
+async function setConductor($: EngineInterface, to: string): Promise<void> {
+  await update($, conductor, () => to)
+  await $.store.set(await keyOf($, 'conductor'), to)
+}
+
+async function capabilitiesText($: EngineInterface): Promise<string | null> {
+  const path = (await $.env.get('WORKBENCH_CAPABILITIES')) || `${await $.env.get('HOME')}/.claude/workbench/capabilities.json`
+  try {
+    return await $.fs.read(path)
+  } catch {
+    return null
+  }
+}
+
+// The mandatory skills: the person's list for every child plus the spec's `Skills:` line.
+async function requireSkills($: EngineInterface, spec: string): Promise<void> {
+  const next = [...new Set([...(await read($, required)), ...configuredSkills(await capabilitiesText($)), ...specSkills(spec)])]
+  await update($, required, () => next)
+  await $.store.set(await keyOf($, 'required'), next)
+}
+
+async function pendingSkills($: EngineInterface): Promise<string[]> {
+  return missingSkills(await read($, required), await read($, loaded))
 }
 
 const INBOX_CHECK = /\borca(?:-ide)?\s+orchestration\s+(?:check|inbox)\b/
@@ -102,21 +161,28 @@ async function refreshGit($: EngineInterface): Promise<void> {
   await update($, repos, () => states)
 }
 
-const armedKey = async ($: EngineInterface) => `armed:${await $.session.id()}`
+const armedKey = async ($: EngineInterface) => keyOf($, 'armed')
 
 async function arm($: EngineInterface, on: boolean): Promise<void> {
   await update($, isArmed, () => on)
   await $.store.set(await armedKey($), on)
   if (on) {
     await identify($)
+    await requireSkills($, '')
     await refreshGit($)
   }
 }
 
+const anchorOf = async ($: EngineInterface) =>
+  anchorText(await read($, handle), await read($, repos), await read($, conductor), {
+    isTicket: await read($, isTicket),
+    skills: await read($, required),
+  })
+
 // Until prompt.compose is seen running, the anchor rides on each prompt as context.
 async function anchored<E extends { context?: string[] }>($: EngineInterface, e: E): Promise<E> {
   if (await read($, isComposed)) return e
-  const text = anchorText(await read($, handle), await read($, repos), await read($, conductor))
+  const text = await anchorOf($)
 
   return { ...e, context: [...(e.context ?? []), text] }
 }
@@ -162,7 +228,7 @@ async function acceptHandoff($: EngineInterface, message: Message): Promise<bool
   const superior = await read($, conductor)
   if (!isHandoff(message) || message.from_handle === superior) return false
   if (superior !== null && liveHandles((await orca($, 'terminal', 'list')) ?? '').has(superior)) return false
-  await update($, conductor, () => message.from_handle)
+  await setConductor($, message.from_handle)
 
   return true
 }
@@ -182,7 +248,12 @@ async function sortMail($: EngineInterface, unread: Message[]): Promise<{ mine: 
 // Wakes the child when the conductor wrote to it and it did not read it: the
 // usual reason a child sits idle after an answer.
 async function poll($: EngineInterface): Promise<void> {
-  if (!(await read($, isArmed))) return
+  if (!(await read($, isArmed))) {
+    // A dispatched session is a child whether or not it loaded a skill.
+    await identify($)
+    if (!(await read($, dispatched))) return
+    await arm($, true)
+  }
   if ((await read($, handle)) === null) await identify($)
   const me = await read($, handle)
   if (me === null || !(await read($, dispatched))) return
@@ -201,7 +272,14 @@ export const register: Register = on => {
     const started = await next(e)
     const wasArmed = (await $.store.get(await armedKey($))) === true
     await update($, isArmed, () => wasArmed)
-    if (wasArmed) await identify($)
+    const kept = await $.store.get(await keyOf($, 'conductor'))
+    if (typeof kept === 'string') await update($, conductor, () => kept)
+    const keptLoaded = await $.store.get(await keyOf($, 'loaded'))
+    if (Array.isArray(keptLoaded)) await update($, loaded, () => keptLoaded as string[])
+    const keptRequired = await $.store.get(await keyOf($, 'required'))
+    if (Array.isArray(keptRequired)) await update($, required, () => keptRequired as string[])
+    await identify($)
+    if (!wasArmed && (await read($, dispatched))) await arm($, true)
     await $.command.register({
       name: 'hijo',
       description: 'Estado del hijo de ticket-workflow en esta sesión; "/hijo on|off" lo arma o desarma',
@@ -215,12 +293,28 @@ export const register: Register = on => {
   // and the slash command arm the session too.
   on('tool.call', { tool: 'Skill' }, async ($, e, next) => {
     const result = await next(e)
-    if (/(^|:)ticket-workflow$/.test(e.skill) && result.deny === undefined) await arm($, true)
+    // An attempt counts: a skill that does not exist here must not lock the child out.
+    const next_ = [...new Set([...(await read($, loaded)), e.skill])]
+    await update($, loaded, () => next_)
+    await $.store.set(await keyOf($, 'loaded'), next_)
+    if (/(^|:)ticket-workflow$/.test(e.skill) && result.deny === undefined) {
+      await update($, isTicket, () => true)
+      await arm($, true)
+    }
 
     return result
   }).catch(($, e, next) => next(e))
 
+  // The mandatory skills come first: until they are loaded, every other tool is refused.
+  on('tool.call', async ($, e, next) => {
+    if (BEFORE_SKILLS.has(e.tool) || !(await isChild($))) return next(e)
+    const missing = await pendingSkills($)
+
+    return missing.length > 0 ? { deny: `ticket-workflow: ${skillsFirstText(missing)}` } : next(e)
+  }).catch(($, e, next) => next(e))
+
   on('command.run', { command: 'ticket-workflow' }, async ($, e, next) => {
+    await update($, isTicket, () => true)
     await arm($, true)
 
     return next(e)
@@ -229,6 +323,7 @@ export const register: Register = on => {
   // Loading the skill is what makes this session a child on a ticket.
   on('skill.prompt', { skill: 'ticket-workflow' }, async ($, e, next) => {
     const result = await next(e)
+    await update($, isTicket, () => true)
     await arm($, true)
 
     return result
@@ -245,7 +340,7 @@ export const register: Register = on => {
     const composed = await next(e)
     if (!(await isChild($))) return composed
     await update($, isComposed, () => true)
-    const text = anchorText(await read($, handle), await read($, repos), await read($, conductor))
+    const text = await anchorOf($)
 
     return { ...composed, sections: [...composed.sections, { id: 'ticket-workflow:anchor', text, scope: 'session' } as const] }
   })
@@ -253,7 +348,32 @@ export const register: Register = on => {
   // An organization's security plugin can skip a user plugin's prompt.compose.
   // Until compose is seen running, the anchor rides on each prompt as context.
   on('prompt.submit', async ($, e, next) => {
-    if (e.command !== undefined || !(await isChild($))) return next(e)
+    if (e.command !== undefined) return next(e)
+    const dispatch = parseDispatchPreamble(e.text)
+    if (dispatch !== null && !(await isChild($))) {
+      // The first dispatch makes this session a child, and its coordinator the conductor.
+      await identify($)
+      if ((await read($, conductor)) === null) await setConductor($, dispatch.coordinator)
+      await update($, dispatched, () => true)
+      await arm($, true)
+    }
+    if (!(await isChild($))) return next(e)
+    if (dispatch !== null) {
+      const superior = await superiorOf($)
+      if (dispatch.coordinator !== superior) {
+        // Another conductor's task: only an adopter takes over, once the old one is gone.
+        const isAlive = superior !== null && liveHandles((await orca($, 'terminal', 'list')) ?? '').has(superior)
+        if (isAlive) {
+          const sent = await relay($, FOREIGN_SUBJECT, foreignBody(e.text, dispatch.coordinator, await read($, handle)))
+
+          return { drop: `ticket-workflow: tarea despachada por ${dispatch.coordinator}, que no es el conductor de este hijo. ${sent.isSent ? `Se la pasé a ${sent.to}` : 'No pude pasársela al conductor'}; no se ejecuta.` }
+        }
+        await setConductor($, dispatch.coordinator)
+      }
+      await requireSkills($, e.text)
+
+      return next(await anchored($, e))
+    }
     const block = parseInjected(e.text)
     if (block !== null) {
       // Orca's injected mail: only the conductor's messages reach the model.
@@ -321,6 +441,7 @@ export const register: Register = on => {
     const lines = [
       `handle: ${me ?? 'desconocido'} · ${(await read($, dispatched)) ? 'despachado por un conductor' : 'sin conductor: el interlocutor es el usuario'}`,
       ...(await read($, repos)).map(repoLine),
+      `skills obligatorias: ${(await read($, required)).join(', ') || 'ninguna'}; faltan: ${(await pendingSkills($)).join(', ') || 'ninguna'}`,
     ]
 
     return { text: lines.join('\n') }
