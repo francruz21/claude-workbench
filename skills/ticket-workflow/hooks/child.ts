@@ -203,6 +203,16 @@ export function isHandoff(message: Message): boolean {
   return (message.subject ?? '').trim() === HANDOFF_SUBJECT
 }
 
+// The live conductor handing its child to another session, by the user's
+// decision: a handoff sent by the conductor itself, naming the new handle in
+// the body. Null for anything else.
+export function cededTo(message: Message, superior: string | null): string | null {
+  if (superior === null || message.from_handle !== superior || !isHandoff(message)) return null
+  const named = (message.body ?? '').match(/term_[\w-]+/g) ?? []
+
+  return named.find(h => h !== superior) ?? null
+}
+
 // Unread messages to this child, split: the ones its conductor sent, and the
 // rest (a sibling, another session's agent), which go to the conductor instead.
 export function splitBySender(unread: Message[], superior: string | null): { mine: Message[]; foreign: Message[] } {
