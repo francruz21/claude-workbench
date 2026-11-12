@@ -37,6 +37,17 @@ echo "merge, aprobacion, sync"
 denies 'gh pr merge 12 --squash'
 denies 'gh -R Org/repo pr merge 12'
 denies 'gh pr review 12 --approve'
+
+echo "hermes-revisar puede aprobar; el resto de las sesiones no"
+TESTS_RUN=$((TESTS_RUN + 1))
+if [ -z "$(jq -nc '{tool_name: "Bash", tool_input: {command: "gh pr review 12 --approve"}}' | HERMES_ROLE=revisor "$HOOK")" ]; then
+  _pass "revisor aprueba"; else _fail "revisor aprueba"; fi
+TESTS_RUN=$((TESTS_RUN + 1))
+if jq -nc '{tool_name: "Bash", tool_input: {command: "gh pr review 12 --approve"}}' | HERMES_ROLE=hijo "$HOOK" | grep -q '"deny"'; then
+  _pass "hijo de hermes no aprueba"; else _fail "hijo de hermes no aprueba"; fi
+TESTS_RUN=$((TESTS_RUN + 1))
+if jq -nc '{tool_name: "Bash", tool_input: {command: "gh pr merge 12"}}' | HERMES_ROLE=revisor "$HOOK" | grep -q '"deny"'; then
+  _pass "revisor no mergea"; else _fail "revisor no mergea"; fi
 denies 'gh pr review 12 -a'
 denies 'gh repo sync Org/repo -b dev'
 

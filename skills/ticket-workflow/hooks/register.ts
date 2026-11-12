@@ -188,7 +188,9 @@ async function anchored<E extends { context?: string[] }>($: EngineInterface, e:
   return { ...e, context: [...(e.context ?? []), text] }
 }
 
-const isChild = async ($: EngineInterface) => (await read($, isArmed)) && (await read($, dispatched))
+// A hermes-workbench session (HERMES_ROLE set) has its own child rules: 1.0 never takes it.
+const isChild = async ($: EngineInterface) =>
+  !(await $.env.get('HERMES_ROLE')) && (await read($, isArmed)) && (await read($, dispatched))
 
 // The person's own gesture: typed at this terminal, or through Remote Control.
 const isTyped = (origin: { kind: string } | undefined) => origin?.kind === 'composer' || origin?.kind === 'bridge'
