@@ -10,7 +10,7 @@
 #
 #   1. `git push` en cualquier forma (con -C, -c, alias o dentro de `bash -c`
 #      / `eval`). La puerta es tools/publish-branch.sh, que valida la rama.
-#   2. `gh pr merge`, `gh pr review --approve`, `gh repo sync`.
+#   2. `gh pr merge`, `gh pr review --approve` (salvo /hermes-revisar), `gh repo sync`.
 #   3. `gh api` que escribe: metodo distinto de GET, campos (-f/-F/--input)
 #      sin `-X GET`, o una mutation de graphql.
 #   4. `curl` que escribe contra api.github.com.
@@ -86,7 +86,10 @@ while IFS= read -r seg; do
   if printf '%s' "$seg" | grep -qE '(^|[[:space:]/])gh[[:space:]]'; then
     printf '%s' "$seg" | grep -qE 'gh[[:space:]].*\bpr[[:space:]]+merge\b' \
       && deny "gh pr merge esta prohibido: el merge lo hace una persona"
-    printf '%s' "$seg" | grep -qE 'gh[[:space:]].*\bpr[[:space:]]+review\b' \
+    # hermes-workbench's /hermes-revisar (HERMES_ROLE=revisor) approves after its review
+    # panel; merging stays forbidden for everyone.
+    [ "${HERMES_ROLE:-}" != revisor ] \
+      && printf '%s' "$seg" | grep -qE 'gh[[:space:]].*\bpr[[:space:]]+review\b' \
       && printf '%s' "$seg" | grep -qE '(^|[[:space:]])(--approve|-a)([[:space:]]|$)' \
       && deny "gh pr review --approve esta prohibido: la aprobacion la da una persona"
     printf '%s' "$seg" | grep -qE 'gh[[:space:]].*\brepo[[:space:]]+sync\b' \

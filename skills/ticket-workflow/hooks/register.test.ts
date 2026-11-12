@@ -4,13 +4,13 @@ import type { On } from 'claude-code'
 // The host beneath the plugin: Orca knows this terminal as term_me with a live
 // task, the conductor writes from term_c, and git has one work branch.
 // Orca's real shape: `task-list` has no assignee, `dispatch-show` does.
-function host(on: On, opts: { isDispatched: boolean; live?: string[]; childSkills?: string[] }) {
+function host(on: On, opts: { isDispatched: boolean; live?: string[]; childSkills?: string[]; env?: Record<string, string> }) {
   const inbox: object[] = []
   const prompts: string[] = []
   const sends: string[][] = []
   const contexts: (readonly string[])[] = []
   const clock = mock.clock(on, { now: 0 })
-  mock.env(on, { ORCA_PANE_KEY: 'tab2:leafB', HOME: '/h' })
+  mock.env(on, { ORCA_PANE_KEY: 'tab2:leafB', HOME: '/h', ...(opts.env ?? {}) })
   mock.store(on)
   on('fs.read', async ($, e) => {
     if (e.path !== '/h/.claude/workbench/capabilities.json' || opts.childSkills === undefined) throw new Error('ENOENT')
@@ -134,6 +134,21 @@ test('a dispatched session is a child from the start, skill or not', async ($: a
   expect(typed.drop).toContain('term_c')
   expect(prompts).toEqual([])
   expect(sends.at(-1)?.join(' ')).toContain('--to term_c --from term_me --type escalation')
+})
+
+test('a hermes-workbench session is never a 1.0 child, even when Orca dispatched it', async ($: any, on: On) => {
+  const { prompts } = host(on, { isDispatched: true, env: { HERMES_ROLE: 'hijo' } })
+  await start($)
+  expect((await $.tool.call({ tool: 'Agent', tool_use_id: 'a', prompt: 'x', description: 'x' } as never)).deny).toBeUndefined()
+  const typed = await $.prompt.submit({ text: 'hacé otra cosa', origin: { kind: 'composer' } } as never)
+  expect(typed.drop).toBeUndefined()
+  expect(prompts.at(-1)).toBe('hacé otra cosa')
+})
+
+test('a stray HERMES_ROLE that is not a hermes role keeps the 1.0 child guards', async ($: any, on: On) => {
+  host(on, { isDispatched: true, env: { HERMES_ROLE: '1' } })
+  await start($)
+  expect((await $.tool.call({ tool: 'Agent', tool_use_id: 'a', prompt: 'x', description: 'x' } as never)).deny).toContain('subagentes')
 })
 
 test('the first dispatch arms a session Orca had not reported yet, and names its conductor', async ($: any, on: On) => {
