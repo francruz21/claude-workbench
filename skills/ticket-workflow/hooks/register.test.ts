@@ -145,6 +145,12 @@ test('a hermes-workbench session is never a 1.0 child, even when Orca dispatched
   expect(prompts.at(-1)).toBe('hacé otra cosa')
 })
 
+test('a stray HERMES_ROLE that is not a hermes role keeps the 1.0 child guards', async ($: any, on: On) => {
+  host(on, { isDispatched: true, env: { HERMES_ROLE: '1' } })
+  await start($)
+  expect((await $.tool.call({ tool: 'Agent', tool_use_id: 'a', prompt: 'x', description: 'x' } as never)).deny).toContain('subagentes')
+})
+
 test('the first dispatch arms a session Orca had not reported yet, and names its conductor', async ($: any, on: On) => {
   const { prompts } = host(on, { isDispatched: false })
   await start($)
