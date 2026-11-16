@@ -57,6 +57,11 @@ denies 'gh api --method=POST repos/o/r/merges -f base=dev -f head=x'
 denies 'gh api repos/o/r/merges -f base=dev -f head=x'
 denies 'gh api -X DELETE repos/o/r/git/refs/heads/dev'
 denies "gh api graphql -f query='mutation { mergePullRequest(input:{}) { clientMutationId } }'"
+# Resolving a review thread is the one write allowed: a PR is not done while a thread is open.
+allows "gh api graphql -f query='mutation { resolveReviewThread(input:{threadId:\"PRRT_x\"}) { thread { isResolved } } }'"
+allows "gh api graphql -f query='mutation(\$id:ID!){ r: resolveReviewThread(input:{threadId:\$id}) { thread { id } } }' -f id=PRRT_x"
+denies "gh api graphql -f query='mutation { resolveReviewThread(input:{threadId:\"a\"}) { clientMutationId } mergePullRequest(input:{}) { clientMutationId } }'"
+denies "gh api graphql -f query='mutation { resolveReviewThread(input:{threadId:\"a\"}) { clientMutationId } }' && gh api graphql -f query='mutation { deleteRef(input:{}) { clientMutationId } }'"
 denies 'curl -X PUT -H "Authorization: token x" https://api.github.com/repos/o/r/pulls/1/merge'
 denies 'curl -d "{}" https://api.github.com/repos/o/r/merges'
 

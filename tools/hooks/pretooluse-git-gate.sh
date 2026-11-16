@@ -112,7 +112,14 @@ done < <(segments "$SAFE")
 # 3b. Mutations de graphql (viajan entre comillas: se mira el comando entero).
 if printf '%s' "$SAFE" | grep -qE 'gh[[:space:]].*\bapi[[:space:]]+graphql\b' \
    && printf '%s' "$CMD" | grep -qE '\bmutation\b'; then
-  deny "gh api graphql con mutation esta prohibido: solo lectura"
+  # One exception: resolving a review thread. A PR is not done while a thread stays
+  # open, so the agent that fixed it must be able to close it. Allowed only when every
+  # field called inside the mutations is resolveReviewThread.
+  CALLED="$(printf '%s' "$CMD" | grep -oE '\b[a-zA-Z_]+[[:space:]]*\([[:space:]]*input[[:space:]]*:' \
+    | grep -oE '^[a-zA-Z_]+' | sort -u)"
+  if [ "$CALLED" != "resolveReviewThread" ]; then
+    deny "gh api graphql con mutation esta prohibido: solo lectura (la unica mutation permitida es resolveReviewThread, sola)"
+  fi
 fi
 
 # 4. curl que escribe contra la API de GitHub.
