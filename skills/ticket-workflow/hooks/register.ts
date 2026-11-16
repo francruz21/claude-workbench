@@ -227,8 +227,8 @@ async function relayPerson($: EngineInterface, text: string): Promise<{ drop: st
   return { drop: relayDropText(sent.to, sent.isSent) }
 }
 
-// A rotated conductor's successor takes over only once the old one's terminal is gone:
-// a second conductor running in parallel cannot claim a live conductor's child.
+// A "Relevo de conductor" always takes over: whoever decides a relieve (Fran or the
+// new conductor) just runs it, even while the old conductor is still alive.
 async function acceptHandoff($: EngineInterface, message: Message): Promise<boolean> {
   const superior = await superiorOf($)
   // Or the live conductor hands it over itself.
@@ -239,7 +239,6 @@ async function acceptHandoff($: EngineInterface, message: Message): Promise<bool
     return true
   }
   if (!isHandoff(message) || message.from_handle === superior) return false
-  if (superior !== null && liveHandles((await orca($, 'terminal', 'list')) ?? '').has(superior)) return false
   await setConductor($, message.from_handle)
 
   return true

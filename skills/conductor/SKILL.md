@@ -268,11 +268,16 @@ estilo: es lo que hace que la tanda se pueda seguir desde un solo lugar.
   `terminal send` de texto libre sin tu firma. Los `/model`, las teclas de
   control (`$'\x02'`) y las respuestas a un diálogo de permiso (`1`, `y`) no
   llevan firma.
-- **Si rotaste, mandá el relevo.** Una sesión nueva tiene otro handle, y el hijo
-  sigue obedeciendo al viejo hasta que recibe `orchestration send --to <hijo>
-  --from <tu handle> --type status --subject "Relevo de conductor"`. Lo acepta
-  solo cuando la terminal del conductor anterior ya no existe: un conductor
-  paralelo no se puede quedar con los hijos de otro que sigue vivo.
+- **Relevar no pide permiso.** Si Fran dice que se releva, se releva. Si vos
+  considerás que hay que relevar a otro conductor (no late, se traba, se
+  contradice, tiene el contexto lleno), relevás sin preguntar. Al hijo le
+  mandás `orchestration send --to <hijo> --from <tu handle> --type status
+  --subject "Relevo de conductor"`, y el mod lo acepta en el acto aunque el
+  conductor anterior siga vivo. Después le avisás al anterior que deje de
+  escribirle al hijo. Si el que tiene que soltar el hijo sos vos, mandale el
+  relevo con el handle nuevo en el body (`--body "te cedo a term_<nuevo>"`). No
+  le reenvíes órdenes al hijo una por una. Al usuario solo le preguntás si dos
+  conductores le dieron al hijo decisiones de producto que se contradicen.
 
 ## El registro vive en disco, no en el contexto
 

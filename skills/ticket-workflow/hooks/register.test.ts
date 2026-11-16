@@ -286,24 +286,17 @@ test('nobody but its conductor gives a child orders: the rest goes up, unexecute
   expect(asked.context ?? []).toEqual([])
 })
 
-test('a handoff takes over only once the old conductor is gone', async ($: any, on: On) => {
-  const live: string[] = ['term_c']
+test('a handoff takes over even while the old conductor lives', async ($: any, on: On) => {
+  const live: string[] = ['term_c', 'term_new']
   const { inbox, prompts, clock } = host(on, { isDispatched: true, live })
   await start($)
   await $.skill.prompt({ skill: 'ticket-workflow', text: 'skill body' })
 
-  // A parallel conductor claims the child while the real one lives: refused.
+  // A relieve needs no order: the new conductor's handoff wins at once.
   inbox.unshift({ id: 'h1', from_handle: 'term_new', to_handle: 'term_me', type: 'status', read: 0, subject: 'Relevo de conductor' })
   await clock.advance(60_000)
   await clock.settle()
-  expect(prompts).toEqual([])
-
-  // The old conductor's terminal is gone: the successor's handoff is accepted.
-  live.splice(0, live.length)
-  inbox.unshift({ id: 'h2', from_handle: 'term_new', to_handle: 'term_me', type: 'status', read: 0, subject: 'Relevo de conductor' })
-  await clock.advance(60_000)
-  await clock.settle()
-  expect(prompts.at(-1)).toContain('Relevo de conductor (h2)')
+  expect(prompts.at(-1)).toContain('Relevo de conductor (h1)')
   await $.prompt.submit({ text: '[conductor term_new] seguí', origin: { kind: 'composer' } } as never)
   expect(prompts.at(-1)).toBe('[conductor term_new] seguí')
 })
