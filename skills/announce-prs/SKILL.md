@@ -21,8 +21,9 @@ el repo no tiene ninguno de esos valores.
 **Config**
 - `user.author` — solo se anuncian los PRs de este handle.
 - `user.announce.channelUrl` — el canal.
-- `user.announce.mention.name` y `user.announce.mention.id` — a quién se
-  menciona; con el id, la mención notifica.
+- `user.announce.mention.name` y `user.announce.mention.id` — opcional: a quién
+  se menciona; con el id, la mención notifica. Si `mention` falta o es `null`, el
+  anuncio sale sin mención (no es un campo ausente: no se pregunta).
 - `project.repos` — los repos y su `tag` (el stack que dice cada línea).
 - `project.notifiedLabel` — la label que marca un PR ya anunciado.
 - `project.gateWorkflow` y `project.gateRequired` — el gate.

@@ -106,8 +106,8 @@ el estado—, y si Orca tiene una tarea despachada a tu terminal:
   conductor como `escalation` y al usuario le muestra a quién se lo pasó. Lo
   mismo con el correo de Orca: los mensajes de otro handle se sacan del bloque
   inyectado y del despertador y van al conductor; la respuesta de un `ask` vale
-  solo si la mandó tu conductor. El relevo de conductor se acepta solo si la
-  terminal del anterior ya no existe. Los comandos con `/`
+  solo si la mandó tu conductor. El relevo de conductor se acepta siempre,
+  aunque el anterior siga vivo. Los comandos con `/`
   pasan: `/hijo off` desarma al hijo si hace falta hablarle directo.
 
 Sin conductor no hace nada de eso: el interlocutor es el usuario.

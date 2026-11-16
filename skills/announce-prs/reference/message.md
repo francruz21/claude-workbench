@@ -2,7 +2,10 @@
 
 Un formato, sea cual sea el transporte. Los valores salen del config.
 
-Un mensaje **por ticket**. Adentro, una línea por PR de ese ticket:
+Un mensaje **por ticket**. Adentro, una línea por PR de ese ticket.
+
+Sin `mention` en el config, la primera línea no lleva `@<mention.name> `: arranca
+en `PR a <AMBIENTE> 🟢`. No se arroba a nadie por defecto.
 
 ```
 @<mention.name> PR a <AMBIENTE> 🟢
